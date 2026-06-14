@@ -6,6 +6,11 @@ COMPOSE ?= docker compose
 COMPOSE_FILE := deploy/compose.yaml
 PROMPT ?= Please echo 'hello'.
 
+# Local model served via llama.cpp's `llama-server` (see `make llama-server`
+# and `agent.granite.local.toml.example`).
+OLLAMA_MODEL ?= granite4:tiny-h
+LLAMA_PORT ?= 8080
+
 .PHONY: help
 help:
 	@echo "Targets:"
@@ -19,6 +24,8 @@ help:
 	@echo "  eval           run the Inspect AI echo-clock eval"
 	@echo "  check          lint + format-check + typecheck + coverage (CI gate)"
 	@echo "  run            run the agent CLI once (PROMPT=\"...\")"
+	@echo "  run-local      run the agent CLI against llama-server (PROMPT=\"...\")"
+	@echo "  llama-server   serve an Ollama-pulled model via llama.cpp (OLLAMA_MODEL=...)"
 	@echo "  compose-build  build the agent image for deploy/compose.yaml"
 	@echo "  compose-up     start the agent + Langfuse stack"
 	@echo "  compose-down   stop the stack and remove volumes"
@@ -63,6 +70,19 @@ check: lint format-check typecheck coverage
 .PHONY: run
 run:
 	uv run python -m agent "$(PROMPT)"
+
+.PHONY: run-local
+run-local:
+	AGENT_MODEL__PROVIDER=openai_compat \
+	AGENT_MODEL__NAME=$(OLLAMA_MODEL) \
+	AGENT_MODEL__BASE_URL=http://localhost:$(LLAMA_PORT)/v1 \
+	AGENT_MODEL__NATIVE_TOOL_CALLING=true \
+	uv run python -m agent "$(PROMPT)"
+
+.PHONY: llama-server
+llama-server:
+	llama-server -m "$$(ollama show $(OLLAMA_MODEL) --modelfile | awk '/^FROM/ {print $$2}')" \
+		--port $(LLAMA_PORT) --jinja -c 8192
 
 .PHONY: compose-build
 compose-build:

@@ -1,0 +1,41 @@
+# Example config for running the agent against IBM Granite 4.0 H Tiny via
+# llama.cpp's `llama-server`, using the GGUF weights already pulled by Ollama
+# (no extra download needed).
+#
+# 1. In one terminal, start the server (granite4:tiny-h supports native tool
+#    calling; `--jinja` enables its chat template's tool-call output):
+#
+#      make llama-server
+#
+#    (Override the model/port with `make llama-server OLLAMA_MODEL=... LLAMA_PORT=...`;
+#    it resolves the GGUF path via `ollama show <model> --modelfile`.)
+#
+# 2. In another terminal, either copy this file to agent.toml (everything
+#    else -- the loop, MCP tools, permissions, skills -- is unchanged from
+#    agent.toml), or just run:
+#
+#      make run-local PROMPT="Please echo 'hello'."
+
+[model]
+provider = "openai_compat"
+name = "granite4:tiny-h"
+base_url = "http://localhost:8080/v1"
+native_tool_calling = true
+
+[[mcp_servers]]
+name = "echo-clock"
+transport = "stdio"
+command = "python"
+args = ["-m", "mcp_servers.echo_clock.server"]
+
+[[permissions]]
+server = "echo-clock"
+tool = "echo"
+
+[[permissions]]
+server = "echo-clock"
+tool = "clock"
+
+[otel]
+enabled = false
+service_name = "agent-runtime"
