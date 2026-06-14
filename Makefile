@@ -31,6 +31,7 @@ help:
 	@echo "  test           pytest"
 	@echo "  coverage       pytest with coverage report (fails under threshold)"
 	@echo "  eval           run the Inspect AI eval suite (evals/tasks/, EVAL_MODEL=<registry key>)"
+	@echo "  eval-view      serve the Inspect log viewer over logs/ (http://localhost:7575)"
 	@echo "  check          lint + format-check + typecheck + coverage (CI gate)"
 	@echo "  run            run the agent CLI once (PROMPT=\"...\", MODEL=<registry key>)"
 	@echo "  run-local      run the agent CLI once against llama-server (PROMPT=\"...\")"
@@ -79,6 +80,10 @@ coverage:
 .PHONY: eval
 eval:
 	uv run python -m inspect_ai eval evals/tasks/ -T model=$(EVAL_MODEL)
+
+.PHONY: eval-view
+eval-view:
+	uv run inspect view start --log-dir logs
 
 .PHONY: check
 check: lint format-check typecheck coverage
