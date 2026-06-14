@@ -16,6 +16,7 @@ from agent.core.events import (
     Error,
     ModelCallFinished,
     ModelCallStarted,
+    ModelTextDelta,
     PermissionDecided,
     StepFinished,
     StepStarted,
@@ -148,6 +149,9 @@ async def run_steps(
         async for event in model.generate(messages, tool_specs, system=system):
             if isinstance(event, TextDelta):
                 text_parts.append(event.text)
+                await sink.emit(
+                    ModelTextDelta(run_id=run_id, step_index=step_index, text=event.text)
+                )
             elif isinstance(event, ToolCallComplete):
                 tool_use_blocks.append(event.block)
             elif isinstance(event, StreamUsage):

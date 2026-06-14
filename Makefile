@@ -7,9 +7,13 @@ COMPOSE_FILE := deploy/compose.yaml
 PROMPT ?= Please echo 'hello'.
 
 # Local model served via llama.cpp's `llama-server` (see `make llama-server`
-# and `agent.granite.local.toml.example`).
+# and the `[models.granite-local]` entry in agent.toml).
 OLLAMA_MODEL ?= granite4:tiny-h
 LLAMA_PORT ?= 8080
+
+# Model registry key from agent.toml [models], e.g. `make run MODEL=anthropic`.
+MODEL ?=
+MODEL_FLAG = $(if $(MODEL),--model $(MODEL),)
 
 .PHONY: help
 help:
@@ -23,8 +27,10 @@ help:
 	@echo "  coverage       pytest with coverage report (fails under threshold)"
 	@echo "  eval           run the Inspect AI echo-clock eval"
 	@echo "  check          lint + format-check + typecheck + coverage (CI gate)"
-	@echo "  run            run the agent CLI once (PROMPT=\"...\")"
-	@echo "  run-local      run the agent CLI against llama-server (PROMPT=\"...\")"
+	@echo "  run            run the agent CLI once (PROMPT=\"...\", MODEL=<registry key>)"
+	@echo "  run-local      run the agent CLI once against llama-server (PROMPT=\"...\")"
+	@echo "  chat           interactive streaming chat (MODEL=<registry key>)"
+	@echo "  chat-local     interactive streaming chat against llama-server"
 	@echo "  llama-server   serve an Ollama-pulled model via llama.cpp (OLLAMA_MODEL=...)"
 	@echo "  compose-build  build the agent image for deploy/compose.yaml"
 	@echo "  compose-up     start the agent + Langfuse stack"
@@ -69,15 +75,19 @@ check: lint format-check typecheck coverage
 
 .PHONY: run
 run:
-	uv run python -m agent "$(PROMPT)"
+	uv run python -m agent $(MODEL_FLAG) "$(PROMPT)"
 
 .PHONY: run-local
 run-local:
-	AGENT_MODEL__PROVIDER=openai_compat \
-	AGENT_MODEL__NAME=$(OLLAMA_MODEL) \
-	AGENT_MODEL__BASE_URL=http://localhost:$(LLAMA_PORT)/v1 \
-	AGENT_MODEL__NATIVE_TOOL_CALLING=true \
-	uv run python -m agent "$(PROMPT)"
+	uv run python -m agent --model granite-local "$(PROMPT)"
+
+.PHONY: chat
+chat:
+	uv run python -m agent --chat $(MODEL_FLAG)
+
+.PHONY: chat-local
+chat-local:
+	uv run python -m agent --chat --model granite-local
 
 .PHONY: llama-server
 llama-server:

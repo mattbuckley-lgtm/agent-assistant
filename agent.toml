@@ -1,12 +1,47 @@
-# Default config for the Phase 1 vertical slice: a deterministic replay
-# model + the echo-clock MCP server, with echo/clock allowed.
+# Model registry: pre-configured backends, selected at runtime via
+# `--model <key>` (or AGENT_DEFAULT_MODEL) instead of copying this file.
+# Everything else below -- MCP tools, permissions, skills, OTel -- is shared
+# across all models.
 #
-# Override via env vars, e.g. AGENT_OTEL__ENABLED=true (see agent/config.py).
+# Override individual fields via env vars, e.g. AGENT_OTEL__ENABLED=true,
+# AGENT_MODELS__ANTHROPIC__NAME=... (see agent/config.py).
 
-[model]
+default_model = "replay"
+
+# Deterministic replay model + the echo-clock MCP server, with echo/clock
+# allowed. Used by tests and `make eval`.
+[models.replay]
 provider = "replay"
 name = "replay"
 cassette_path = "tests/cassettes/echo_clock.json"
+
+# Anthropic API. Requires ANTHROPIC_API_KEY in the environment.
+[models.anthropic]
+provider = "anthropic"
+name = "claude-sonnet-4-6"
+api_key_env = "ANTHROPIC_API_KEY"
+native_tool_calling = true
+price_per_input_token_usd = 3e-6
+price_per_output_token_usd = 15e-6
+
+# IBM Granite 4.0 H Tiny via llama.cpp's `llama-server` (see `make
+# llama-server` / `make run-local` / `make chat-local`), using the GGUF
+# weights already pulled by Ollama -- no extra download needed.
+# granite4:tiny-h supports native tool calling via llama-server's --jinja flag.
+[models.granite-local]
+provider = "openai_compat"
+name = "granite4:tiny-h"
+base_url = "http://localhost:8080/v1"
+native_tool_calling = true
+
+# Generic local OpenAI-compatible server (llama.cpp's `llama-server`, vLLM,
+# etc.) for a model with no native function-calling support: falls back to
+# agent/models/prompted_tools.py.
+[models.local-prompted]
+provider = "openai_compat"
+name = "qwen2.5-7b-instruct"
+base_url = "http://localhost:8080/v1"
+native_tool_calling = false
 
 [[mcp_servers]]
 name = "echo-clock"

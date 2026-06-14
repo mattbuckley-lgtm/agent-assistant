@@ -70,6 +70,11 @@ class ModelCallFinished(EventBase):
     latency_ms: float
 
 
+class ModelTextDelta(EventBase):
+    type: Literal["model_text_delta"] = "model_text_delta"
+    text: str
+
+
 class ToolCallRequested(EventBase):
     type: Literal["tool_call_requested"] = "tool_call_requested"
     tool_use_id: str
@@ -115,6 +120,7 @@ TranscriptEvent = Annotated[
     | StepFinished
     | ModelCallStarted
     | ModelCallFinished
+    | ModelTextDelta
     | ToolCallRequested
     | PermissionDecided
     | ToolCallStarted

@@ -68,12 +68,22 @@ class AgentSettings(BaseSettings):
         toml_file="agent.toml",
     )
 
-    model: ModelConfig
+    models: dict[str, ModelConfig]
+    default_model: str
     mcp_servers: list[MCPServerConfig] = Field(default_factory=list[MCPServerConfig])
     permissions: list[AllowRule] = Field(default_factory=list[AllowRule])
     otel: OtelConfig = Field(default_factory=OtelConfig)
     skills_dir: Path | None = None
     max_steps: int = 20
+
+    def resolve_model(self, name: str | None = None) -> ModelConfig:
+        """Look up a model by registry key, falling back to `default_model`."""
+        key = name or self.default_model
+        try:
+            return self.models[key]
+        except KeyError:
+            available = ", ".join(sorted(self.models)) or "(none configured)"
+            raise ValueError(f"Unknown model '{key}'. Available: {available}") from None
 
     @classmethod
     def settings_customise_sources(

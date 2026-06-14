@@ -8,22 +8,27 @@ since they don't have their own start/finish pair in the transcript.
 
 from __future__ import annotations
 
+import json
+
 from opentelemetry.trace import Span, Status, StatusCode, Tracer, set_span_in_context
 
 from agent.core.events import (
     Error,
     ModelCallFinished,
     ModelCallStarted,
+    ModelTextDelta,
     PermissionDecided,
     RunFinished,
     RunStarted,
     StepFinished,
     StepStarted,
     ToolCallFinished,
+    ToolCallRequested,
     ToolCallStarted,
     TranscriptEvent,
 )
 from agent.core.interfaces import TranscriptSink
+from agent.models._convert import tool_result_to_text
 from agent.models.base import Usage
 from agent.observability.semconv import (
     AGENT_MCP_SERVER,
@@ -64,6 +69,28 @@ class FanOutSink:
     async def emit(self, event: TranscriptEvent) -> None:
         for s in self._sinks:
             await s.emit(event)
+
+
+_TOOL_RESULT_PREVIEW_LEN = 200
+
+
+class StreamingConsoleSink:
+    """Prints model output token-by-token as it streams in, plus brief
+    tool-call/result indicators. For interactive use (`make chat`)."""
+
+    async def emit(self, event: TranscriptEvent) -> None:
+        if isinstance(event, ModelTextDelta):
+            print(event.text, end="", flush=True)
+        elif isinstance(event, ToolCallRequested):
+            print(f"\n[tool call: {event.tool}({json.dumps(event.args)})]", flush=True)
+        elif isinstance(event, ToolCallFinished):
+            text = tool_result_to_text(event.result.content)
+            if len(text) > _TOOL_RESULT_PREVIEW_LEN:
+                text = text[:_TOOL_RESULT_PREVIEW_LEN] + "..."
+            status = "error" if event.is_error else "ok"
+            print(f"[tool result ({status}): {text}]", flush=True)
+        else:
+            pass
 
 
 def _tag(event: TranscriptEvent, span: Span) -> None:
@@ -108,7 +135,10 @@ class OtelSink:
         elif isinstance(event, Error):
             self._record_error(event)
         else:
-            pass  # ToolCallRequested has no span of its own; covered by the tool-call span
+            # ToolCallRequested has no span of its own (covered by the
+            # tool-call span); ModelTextDelta is too high-frequency for spans
+            # and is only consumed by streaming sinks.
+            pass
 
     def _enclosing_span(self, run_id: str, step_index: int | None) -> Span | None:
         if step_index is not None:
