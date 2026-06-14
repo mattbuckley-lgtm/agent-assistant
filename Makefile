@@ -32,6 +32,7 @@ help:
 	@echo "  chat           interactive streaming chat (MODEL=<registry key>)"
 	@echo "  chat-local     interactive streaming chat against llama-server"
 	@echo "  llama-server   serve an Ollama-pulled model via llama.cpp (OLLAMA_MODEL=...)"
+	@echo "  llama-server-stop  stop the background llama-server process"
 	@echo "  compose-build  build the agent image for deploy/compose.yaml"
 	@echo "  compose-up     start the agent + Langfuse stack"
 	@echo "  compose-down   stop the stack and remove volumes"
@@ -94,6 +95,10 @@ llama-server:
 	@MODEL_PATH=$$(uv run python scripts/ollama_gguf_path.py $(OLLAMA_MODEL)) || exit 1; \
 	echo "Serving $(OLLAMA_MODEL) from $$MODEL_PATH"; \
 	llama-server -m "$$MODEL_PATH" --port $(LLAMA_PORT) --jinja -c 8192
+
+.PHONY: llama-server-stop
+llama-server-stop:
+	pkill -f llama-server
 
 .PHONY: compose-build
 compose-build:
