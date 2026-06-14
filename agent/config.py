@@ -4,6 +4,7 @@ implementations of the Protocols in `agent/core/interfaces.py`. Nothing in
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -18,6 +19,17 @@ from pydantic_settings import (
 from agent.mcp.permissions import AllowRule
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _config_file() -> Path:
+    """`agent.toml` by default; `AGENT_CONFIG_FILE` overrides it (e.g. the
+    container image points this at `agent.container.toml`, which configures
+    MCP servers as sibling services instead of subprocesses)."""
+    override = os.environ.get("AGENT_CONFIG_FILE")
+    if override is None:
+        return _REPO_ROOT / "agent.toml"
+    path = Path(override)
+    return path if path.is_absolute() else _REPO_ROOT / path
 
 
 class ModelConfig(BaseModel):
@@ -67,7 +79,7 @@ class AgentSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="AGENT_",
         env_nested_delimiter="__",
-        toml_file=_REPO_ROOT / "agent.toml",
+        toml_file=_config_file(),
     )
 
     models: dict[str, ModelConfig]

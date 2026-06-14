@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
+from mcp_servers._runtime import serve
+
 mcp = FastMCP("wordcount")
 
 
@@ -19,4 +21,4 @@ def count_words(text: str) -> int:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    serve(mcp)

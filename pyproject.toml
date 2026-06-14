@@ -34,7 +34,7 @@ target-version = "py312"
 select = ["E", "F", "I", "UP", "B", "ASYNC"]
 
 [tool.pyright]
-include = ["agent", "evals", "scripts", "tests"]
+include = ["agent", "evals", "mcp_servers", "scripts", "tests"]
 typeCheckingMode = "strict"
 pythonVersion = "3.12"
 reportMissingTypeStubs = false

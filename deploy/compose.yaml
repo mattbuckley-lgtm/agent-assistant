@@ -1,5 +1,8 @@
-# Phase 1 checkpoint: bring up a local Langfuse + run the agent once, wired
-# for OTLP export, so a trace appears in Langfuse at http://localhost:3000.
+# Phase 5 checkpoint: the agent and each MCP server run as their own
+# hardened, non-root containers (see ../Dockerfile). The agent talks to the
+# MCP servers over streamable_http via deploy/agent.container.toml (selected
+# with AGENT_CONFIG_FILE) and exports traces to Langfuse over OTLP, so a
+# trace appears at http://localhost:3000.
 #
 # Usage:
 #   cd deploy && docker compose up --build
@@ -7,6 +10,13 @@
 # All credentials below are fixed DEV-ONLY values so the agent's OTLP
 # Authorization header (base64 of "<public key>:<secret key>") can be
 # precomputed. CHANGEME before using this anywhere but a local sandbox.
+#
+# Hardening applied to the agent and MCP server services (our own images):
+# read-only root filesystem with a tmpfs /tmp, all Linux capabilities
+# dropped, and no-new-privileges. The MCP servers additionally sit on
+# `mcp-internal`, an `internal: true` network with no route out to the
+# internet; the agent also joins the default network to reach Langfuse (and
+# any model API).
 services:
   agent:
     build:
@@ -14,7 +24,10 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - langfuse-web
+      - mcp-echo-clock
+      - mcp-wordcount
     environment:
+      AGENT_CONFIG_FILE: /app/deploy/agent.container.toml
       AGENT_OTEL__ENABLED: "true"
       AGENT_OTEL__ENDPOINT: http://langfuse-web:3000/api/public/otel
       AGENT_OTEL__SERVICE_NAME: agent-runtime
@@ -22,6 +35,50 @@ services:
       AGENT_OTEL__HEADERS__AUTHORIZATION: >-
         Basic cGstbGYtMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAwOnNrLWxmLTAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMA==
     command: ["Please echo 'hello'."]
+    networks:
+      - default
+      - mcp-internal
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  mcp-echo-clock:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    entrypoint: ["python", "-m", "mcp_servers.echo_clock.server"]
+    environment:
+      MCP_TRANSPORT: streamable-http
+    networks:
+      - mcp-internal
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  mcp-wordcount:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    entrypoint: ["python", "-m", "mcp_servers.wordcount.server"]
+    environment:
+      MCP_TRANSPORT: streamable-http
+    networks:
+      - mcp-internal
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
   langfuse-worker:
     image: docker.io/langfuse/langfuse-worker:3
@@ -149,6 +206,10 @@ services:
       PGTZ: UTC
     volumes:
       - langfuse_postgres_data:/var/lib/postgresql/data
+
+networks:
+  mcp-internal:
+    internal: true
 
 volumes:
   langfuse_postgres_data:

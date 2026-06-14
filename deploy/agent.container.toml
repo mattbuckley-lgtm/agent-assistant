@@ -1,0 +1,67 @@
+# Container variant of ../agent.toml: identical except `[[mcp_servers]]`,
+# which point at the `mcp-echo-clock`/`mcp-wordcount` services in
+# compose.yaml over streamable_http instead of spawning them as
+# subprocesses. Selected via AGENT_CONFIG_FILE (see agent/config.py and the
+# agent service's Dockerfile/compose entry).
+#
+# Keep this in sync with ../agent.toml for everything except mcp_servers.
+#
+# [models.local-prompted] is omitted (same reasoning as before -- nothing
+# currently exercises it from a container). [models.granite-local] is kept,
+# pointed at `host.containers.internal` (podman/Docker's host-gateway DNS
+# name) instead of `localhost`, so the containerized agent/evals can reach a
+# `llama-server` running on the host (see `make llama-server`).
+
+default_model = "replay"
+
+skills_dir = "skills"
+
+[models.replay]
+provider = "replay"
+name = "replay"
+cassette_path = "tests/cassettes/echo_clock.json"
+
+# Anthropic API. Requires ANTHROPIC_API_KEY in the environment.
+[models.anthropic]
+provider = "anthropic"
+name = "claude-sonnet-4-6"
+api_key_env = "ANTHROPIC_API_KEY"
+native_tool_calling = true
+price_per_input_token_usd = 3e-6
+price_per_output_token_usd = 15e-6
+
+# IBM Granite 4.0 H Tiny via a `llama-server` running on the host (see `make
+# llama-server`), reached through podman/Docker's host-gateway DNS name.
+[models.granite-local]
+provider = "openai_compat"
+name = "granite4:tiny-h"
+base_url = "http://host.containers.internal:8080/v1"
+native_tool_calling = true
+
+# Each runs as its own isolated, network-restricted service (see
+# deploy/compose.yaml); the agent reaches them over streamable_http.
+[[mcp_servers]]
+name = "echo-clock"
+transport = "streamable_http"
+url = "http://mcp-echo-clock:8000/mcp"
+
+[[mcp_servers]]
+name = "wordcount"
+transport = "streamable_http"
+url = "http://mcp-wordcount:8000/mcp"
+
+[[permissions]]
+server = "echo-clock"
+tool = "echo"
+
+[[permissions]]
+server = "echo-clock"
+tool = "clock"
+
+[[permissions]]
+server = "wordcount"
+tool = "count_words"
+
+[otel]
+enabled = false
+service_name = "agent-runtime"

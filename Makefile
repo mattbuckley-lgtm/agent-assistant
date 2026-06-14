@@ -42,6 +42,10 @@ help:
 	@echo "  compose-up     start the agent + Langfuse stack"
 	@echo "  compose-down   stop the stack and remove volumes"
 	@echo "  compose-logs   follow logs for the stack"
+	@echo "  compose-eval-up    build + start the containerized MCP servers"
+	@echo "  compose-eval       run the eval suite in a hardened container against"
+	@echo "                     them (EVAL_MODEL=<registry key>, default granite-local)"
+	@echo "  compose-eval-down  stop the compose-eval containers"
 	@echo "  clean          remove caches, __pycache__, and eval logs"
 
 .PHONY: install
@@ -120,6 +124,30 @@ compose-down:
 .PHONY: compose-logs
 compose-logs:
 	$(COMPOSE) -f $(COMPOSE_FILE) logs -f
+
+.PHONY: compose-eval-up
+compose-eval-up:
+	$(COMPOSE) -f $(COMPOSE_FILE) build agent mcp-echo-clock mcp-wordcount
+	$(COMPOSE) -f $(COMPOSE_FILE) up -d mcp-echo-clock mcp-wordcount
+
+# Run the eval suite (evals/tasks/) inside a hardened, throwaway agent
+# container against the containerized MCP servers over streamable_http (see
+# deploy/agent.container.toml, selected via AGENT_CONFIG_FILE). Defaults to
+# the local llama-server model (EVAL_MODEL=granite-local) -- start it first
+# with `make llama-server`. Override with e.g.
+# `make compose-eval EVAL_MODEL=anthropic` (needs ANTHROPIC_API_KEY).
+.PHONY: compose-eval
+compose-eval: EVAL_MODEL = granite-local
+compose-eval: compose-eval-up
+	$(COMPOSE) -f $(COMPOSE_FILE) run --rm --no-deps \
+		-e AGENT_CONFIG_FILE=/app/deploy/agent.container.toml \
+		-e INSPECT_LOG_DIR=/tmp/logs \
+		--entrypoint python \
+		agent -m inspect_ai eval evals/tasks/ -T model=$(EVAL_MODEL)
+
+.PHONY: compose-eval-down
+compose-eval-down:
+	$(COMPOSE) -f $(COMPOSE_FILE) down
 
 .PHONY: clean
 clean:
