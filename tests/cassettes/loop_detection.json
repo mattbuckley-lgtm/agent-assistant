@@ -1,0 +1,28 @@
+{
+  "turns": [
+    [
+      {"type": "text_delta", "text": "Echoing 'loop'."},
+      {"type": "tool_call_complete", "block": {"type": "tool_use", "id": "call_1", "name": "echo", "input": {"text": "loop"}}},
+      {"type": "usage", "usage": {"input_tokens": 50, "output_tokens": 10}},
+      {"type": "done", "stop_reason": "tool_use"}
+    ],
+    [
+      {"type": "text_delta", "text": "Echoing 'loop' again."},
+      {"type": "tool_call_complete", "block": {"type": "tool_use", "id": "call_2", "name": "echo", "input": {"text": "loop"}}},
+      {"type": "usage", "usage": {"input_tokens": 60, "output_tokens": 10}},
+      {"type": "done", "stop_reason": "tool_use"}
+    ],
+    [
+      {"type": "text_delta", "text": "Echoing 'loop' yet again."},
+      {"type": "tool_call_complete", "block": {"type": "tool_use", "id": "call_3", "name": "echo", "input": {"text": "loop"}}},
+      {"type": "usage", "usage": {"input_tokens": 70, "output_tokens": 10}},
+      {"type": "done", "stop_reason": "tool_use"}
+    ],
+    [
+      {"type": "text_delta", "text": "Echoing 'loop' once more."},
+      {"type": "tool_call_complete", "block": {"type": "tool_use", "id": "call_4", "name": "echo", "input": {"text": "loop"}}},
+      {"type": "usage", "usage": {"input_tokens": 80, "output_tokens": 10}},
+      {"type": "done", "stop_reason": "tool_use"}
+    ]
+  ]
+}

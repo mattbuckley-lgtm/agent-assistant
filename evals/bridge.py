@@ -50,6 +50,8 @@ def run_agent_solver(build: DepsFactory, *, system_prompt: str = "") -> Solver:
         final_text = result.final_text()
         state.output = ModelOutput.from_content(model=model.name, content=final_text)
         state.messages.append(ChatMessageAssistant(content=final_text))
+        state.store.set("transcript", [e.model_dump(mode="json") for e in result.transcript])
+        state.store.set("stop_reason", result.stop_reason)
         return state
 
     return solve

@@ -1,0 +1,15 @@
+{
+  "turns": [
+    [
+      {"type": "text_delta", "text": "I'll count the words for you."},
+      {"type": "tool_call_complete", "block": {"type": "tool_use", "id": "call_1", "name": "count_words", "input": {"text": "the quick brown fox jumps"}}},
+      {"type": "usage", "usage": {"input_tokens": 100, "output_tokens": 20}},
+      {"type": "done", "stop_reason": "tool_use"}
+    ],
+    [
+      {"type": "text_delta", "text": "The text contains 5 words."},
+      {"type": "usage", "usage": {"input_tokens": 130, "output_tokens": 10}},
+      {"type": "done", "stop_reason": "end_turn"}
+    ]
+  ]
+}
