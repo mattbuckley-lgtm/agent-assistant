@@ -91,8 +91,9 @@ chat-local:
 
 .PHONY: llama-server
 llama-server:
-	llama-server -m "$$(ollama show $(OLLAMA_MODEL) --modelfile | awk '/^FROM/ {print $$2}')" \
-		--port $(LLAMA_PORT) --jinja -c 8192
+	@MODEL_PATH=$$(uv run python scripts/ollama_gguf_path.py $(OLLAMA_MODEL)) || exit 1; \
+	echo "Serving $(OLLAMA_MODEL) from $$MODEL_PATH"; \
+	llama-server -m "$$MODEL_PATH" --port $(LLAMA_PORT) --jinja -c 8192
 
 .PHONY: compose-build
 compose-build:
