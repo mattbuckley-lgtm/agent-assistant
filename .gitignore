@@ -15,6 +15,12 @@ wheels/
 # Inspect AI eval logs
 logs/
 
+# Machine-specific llama-server settings (see local_models.toml.example)
+/local_models.toml
+
+# Machine-local settings and API keys (see .env.example)
+/.env
+
 # Coverage
 .coverage
 htmlcov/

@@ -1,0 +1,27 @@
+# Per-machine llama-server settings, used by scripts/local_model.py to
+# auto-start/stop a local model server for `make run`/`make chat`/`make
+# eval`/`make compose-eval`.
+#
+# Copy this file to local_models.toml (gitignored -- paths here are
+# machine-specific) and adjust. Each key must match an `agent.toml`
+# [models.<key>] entry whose base_url points at the same port (default 8080).
+#
+# Fields:
+#   gguf_path    path to a GGUF file (~ is expanded), OR
+#   ollama_model an Ollama-pulled model (e.g. "granite4:tiny-h"), resolved via
+#                scripts/ollama_gguf_path.py -- no extra download needed
+#   port         default 8080
+#   ctx_size     default 8192
+#   extra_args   extra llama-server flags, e.g. ["--n-gpu-layers", "999"]
+#
+# Only one llama-server can listen on a given port at a time, so entries
+# sharing a port (the default) are mutually exclusive -- switching MODEL
+# stops the old server and starts the new one automatically.
+
+[granite-local]
+ollama_model = "granite4:tiny-h"
+port = 8080
+
+[gemma-local]
+gguf_path = "~/models/gemma-4-26B-A4B/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+port = 8080

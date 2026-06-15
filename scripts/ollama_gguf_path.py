@@ -16,12 +16,12 @@ from pathlib import Path
 _MODEL_LAYER_MEDIA_TYPE = "application/vnd.ollama.image.model"
 
 
-def main(argv: list[str]) -> int:
-    if len(argv) != 1:
-        print("usage: ollama_gguf_path.py <model>[:<tag>]", file=sys.stderr)
-        return 2
+class OllamaModelNotFound(Exception):
+    """Raised when an Ollama-pulled model's manifest or blob can't be found."""
 
-    model = argv[0]
+
+def resolve_gguf_path(model: str) -> Path:
+    """Return the on-disk GGUF blob path for an Ollama-pulled `model[:tag]`."""
     name, _, tag = model.partition(":")
     tag = tag or "latest"
 
@@ -29,9 +29,9 @@ def main(argv: list[str]) -> int:
         Path.home() / ".ollama" / "models" / "manifests" / "registry.ollama.ai" / "library" / name
     ) / tag
     if not manifest_path.is_file():
-        print(f"error: no Ollama manifest at {manifest_path}", file=sys.stderr)
-        print(f"(pull it first with `ollama pull {model}`)", file=sys.stderr)
-        return 1
+        raise OllamaModelNotFound(
+            f"no Ollama manifest at {manifest_path} (pull it first with `ollama pull {model}`)"
+        )
 
     manifest = json.loads(manifest_path.read_text())
     for layer in manifest.get("layers", []):
@@ -39,13 +39,23 @@ def main(argv: list[str]) -> int:
             digest = str(layer["digest"]).replace(":", "-")
             blob_path = Path.home() / ".ollama" / "models" / "blobs" / digest
             if not blob_path.is_file():
-                print(f"error: manifest references missing blob {blob_path}", file=sys.stderr)
-                return 1
-            print(blob_path)
-            return 0
+                raise OllamaModelNotFound(f"manifest references missing blob {blob_path}")
+            return blob_path
 
-    print(f"error: no model layer found in {manifest_path}", file=sys.stderr)
-    return 1
+    raise OllamaModelNotFound(f"no model layer found in {manifest_path}")
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 1:
+        print("usage: ollama_gguf_path.py <model>[:<tag>]", file=sys.stderr)
+        return 2
+
+    try:
+        print(resolve_gguf_path(argv[0]))
+        return 0
+    except OllamaModelNotFound as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

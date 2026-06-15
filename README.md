@@ -149,7 +149,10 @@ pyproject.toml     deps, ruff, pyright (strict), pytest, coverage config
 All runtime configuration is one `AgentSettings` object (`agent/config.py`),
 loaded from a TOML file plus environment variable overrides
 (`pydantic-settings`, prefix `AGENT_`, nested delimiter `__`, e.g.
-`AGENT_OTEL__ENABLED=true`, `AGENT_DEFAULT_MODEL=anthropic`).
+`AGENT_OTEL__ENABLED=true`, `AGENT_DEFAULT_MODEL=anthropic`). These env vars
+(and API keys like `ANTHROPIC_API_KEY`) can also be set in `.env` (gitignored,
+copy from `.env.example`), loaded automatically via `python-dotenv` -- see
+[Running locally (dev)](#running-locally-dev).
 
 - **`agent.toml`** — the dev config. Used by `python -m agent`, `make chat`,
   `make eval`, and the test suite. MCP servers are spawned as **stdio
@@ -312,44 +315,76 @@ cassette under `tests/cassettes/` if you want deterministic replay).
 
 ```bash
 uv sync                                    # install deps + dev tools into .venv
+cp .env.example .env                       # machine-local settings: default model + API keys
 ```
+
+`.env` (gitignored) is loaded automatically by `agent/config.py`, so it
+applies to `make run`/`make chat`/`make eval`/`make compose-eval` *and*
+direct `uv run python -m agent` invocations alike:
+
+- `AGENT_DEFAULT_MODEL` — the `agent.toml` `[models]` key used when `--model`
+  (or `make`'s `MODEL=...`) isn't given; overrides `agent.toml`'s
+  `default_model` (`replay`). For a local model, also add a matching entry to
+  `local_models.toml` (see below).
+- API keys for cloud-hosted models, e.g. `ANTHROPIC_API_KEY=...` (each
+  `agent.toml` `[models.<key>]` entry names its env var via `api_key_env`).
+- `COMPOSE` — the container compose command for `compose-*` targets (read by
+  the Makefile, not the agent). Set `COMPOSE=podman compose` here if you're on
+  podman, instead of passing `COMPOSE=...` on every invocation.
 
 ### One-shot / chat
 
 ```bash
-make run                                   # replay model, default PROMPT
+make run                                   # AGENT_DEFAULT_MODEL from .env (default: replay)
 make run PROMPT="What's 2+2?" MODEL=anthropic   # needs ANTHROPIC_API_KEY
-make chat                                  # interactive streaming REPL, replay model
+make chat                                  # interactive streaming REPL
 make chat MODEL=anthropic
 ```
 
-`MODEL` is any key from `agent.toml`'s `[models]` table; omitted = `default_model`
-(`replay`).
+`MODEL` is any key from `agent.toml`'s `[models]` table; overrides `.env`'s
+`AGENT_DEFAULT_MODEL` for this invocation only.
 
 ### Running against a local model (llama.cpp)
 
+`make run`/`make chat`/`make eval`/`make compose-eval` auto-start a matching
+`llama-server` for local models and stop it again afterwards. Copy
+`local_models.toml.example` to `local_models.toml` (gitignored -- it holds
+machine-specific GGUF paths) and adjust:
+
+```toml
+[granite-local]
+ollama_model = "granite4:tiny-h"   # resolved via scripts/ollama_gguf_path.py, no extra download
+port = 8080
+
+[gemma-local]
+gguf_path = "~/models/gemma-4-26B-A4B/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"
+port = 8080
+```
+
 ```bash
-make llama-server                          # serves granite4:tiny-h (an Ollama-pulled GGUF) via llama-server --jinja
-make run-local PROMPT="..."                # uses [models.granite-local] -> http://localhost:8080/v1
-make chat-local
+make run PROMPT="..." MODEL=gemma-local    # uses [models.gemma-local] -> http://localhost:8080/v1
+make chat MODEL=granite-local
+```
+
+Each entry's key must match an `agent.toml` `[models.<key>]` entry whose
+`base_url` points at the same `port`. Only one `llama-server` can listen on a
+given port at a time, so entries sharing a port (the default) are mutually
+exclusive -- switching `MODEL` stops the old server and starts the new one
+automatically. If a `llama-server` serving the right model is already running
+on that port, it's reused (and left running) instead of being restarted.
+
+To make a local model the default everywhere (`make run`/`make chat`/`make
+eval`/`make compose-eval`, and direct `uv run python -m agent`), set
+`AGENT_DEFAULT_MODEL=gemma-local` in `.env` instead of passing `MODEL=...`
+each time.
+
+To run `llama-server` standalone in the foreground (e.g. for manual debugging
+outside of `make run`/`make chat`), use `MODEL`'s `local_models.toml` entry:
+
+```bash
+make llama-server MODEL=granite-local      # or gemma-local, etc.
 make llama-server-stop
 ```
-
-`OLLAMA_MODEL`/`LLAMA_PORT` are overridable; `scripts/ollama_gguf_path.py`
-resolves the GGUF path from Ollama's local manifests (no extra download).
-
-To serve a manually-downloaded GGUF file instead (e.g. `[models.gemma-local]`),
-pass `GGUF_PATH` -- it overrides `OLLAMA_MODEL`:
-
-```bash
-make llama-server GGUF_PATH=~/models/gemma-4-26B-A4B/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf
-make run PROMPT="..." MODEL=gemma-local    # uses [models.gemma-local] -> http://localhost:8080/v1
-```
-
-Only one `llama-server` can run on a given `LLAMA_PORT` at a time, so
-`granite-local` and `gemma-local` are mutually exclusive unless you start a
-second server on a different `LLAMA_PORT` and update the model's `base_url`
-accordingly.
 
 ### Tests, lint, types, coverage
 
@@ -366,9 +401,9 @@ make check          # all of the above (the CI gate) — run this before conside
 ### Eval suite
 
 ```bash
-make eval                                  # replay model (deterministic, no network)
-make eval EVAL_MODEL=anthropic             # same ground truth against a real model
-make eval EVAL_MODEL=granite-local         # ... or a local model (start `make llama-server` first)
+make eval                                  # AGENT_DEFAULT_MODEL from .env (default: replay)
+make eval MODEL=anthropic                  # same ground truth against a real model
+make eval MODEL=granite-local              # ... or a local model (llama-server auto-starts/stops)
 ```
 
 Equivalent to `uv run python -m inspect_ai eval evals/tasks/ -T model=<key>`.
@@ -394,7 +429,7 @@ agent and every MCP server** — only the entrypoint differs.
   before using anywhere but a local sandbox).
 
 ```bash
-# docker, or: make COMPOSE="podman compose" <target>
+# docker, or .env's COMPOSE (default: docker compose)
 make compose-build                  # build the agent image
 make compose-up                     # build + start everything, runs one default prompt
 make compose-logs                   # follow logs
@@ -409,11 +444,20 @@ After `compose-up`, open `http://localhost:3000` (dev login:
 ```bash
 make compose-eval-up                       # build + start mcp-echo-clock, mcp-wordcount
 make compose-eval                          # run evals/tasks/ in a throwaway hardened agent
-                                            # container against them. Default model:
-                                            # granite-local (start `make llama-server` first)
-make compose-eval EVAL_MODEL=anthropic     # or any agent.container.toml [models] key
-make compose-eval-down                     # tear down
+                                            # container against them. Model: same as
+                                            # `make eval` (.env's AGENT_DEFAULT_MODEL, or
+                                            # "replay"); a local model's llama-server
+                                            # auto-starts/stops on the host, reached via
+                                            # host.containers.internal
+make compose-eval MODEL=anthropic          # or any agent.container.toml [models] key
+                                            # (needs ANTHROPIC_API_KEY in the environment --
+                                            # .env is not forwarded into the container)
 ```
+
+`compose-eval` tears down the `compose-eval-up` containers
+(`mcp-echo-clock`, `mcp-wordcount`) afterwards either way, win or lose --
+`make compose-eval-down` is only needed to clean up after `compose-eval-up`
+without ever running `compose-eval`.
 
 `compose-eval` runs:
 ```
@@ -427,8 +471,9 @@ make compose-eval-down                     # tear down
 ```
 i.e. the *exact same* `evals/tasks/` suite as `make eval`, but the agent runs
 as a hardened, read-only container talking to the MCP servers over the
-network instead of subprocesses, and (for `granite-local`) to a model on the
-host via `host.containers.internal`. The agent's root filesystem is otherwise
+network instead of subprocesses, and (for local models such as
+`granite-local`/`gemma-local`) to a `llama-server` on the host via
+`host.containers.internal`. The agent's root filesystem is otherwise
 read-only (`read_only: true` + `tmpfs: /tmp`), so `./logs` is bind-mounted in
 as the one writable path — eval logs from `compose-eval` land in the same
 `logs/` directory as `make eval`, viewable with `make eval-view`. The image's
@@ -591,5 +636,6 @@ bug.
   stdio MCP subprocesses) and container (`deploy/agent.container.toml`,
   streamable_http MCP services) configs — used by both `python -m agent` and
   the eval suite.
-- Use `make COMPOSE="podman compose" <target>` for any `compose-*` target if
-  you're on podman instead of docker.
+- Use `make COMPOSE="podman compose" <target>` (or set `COMPOSE=podman
+  compose` in `.env`) for any `compose-*` target if you're on podman instead
+  of docker.

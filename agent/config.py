@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 from typing import Literal
 
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import (
     BaseSettings,
@@ -19,6 +20,14 @@ from pydantic_settings import (
 from agent.mcp.permissions import AllowRule
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# .env (gitignored; see .env.example) holds machine-local settings such as
+# AGENT_DEFAULT_MODEL and API keys (ANTHROPIC_API_KEY, ...). Loaded into the
+# environment here -- not just into AgentSettings -- so AGENT_* overrides
+# below and os.environ[api_key_env] lookups in agent/composition.py both see
+# it, however the process was started (Make, `uv run python -m agent`,
+# inspect_ai, ...). Existing environment variables win (override=False).
+load_dotenv(_REPO_ROOT / ".env")
 
 
 def _config_file() -> Path:
