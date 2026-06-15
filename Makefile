@@ -7,9 +7,14 @@ COMPOSE_FILE := deploy/compose.yaml
 PROMPT ?= Please echo 'hello'.
 
 # Local model served via llama.cpp's `llama-server` (see `make llama-server`
-# and the `[models.granite-local]` entry in agent.toml).
+# and the `[models.granite-local]`/`[models.gemma-local]` entries in
+# agent.toml). Either an Ollama-pulled model (OLLAMA_MODEL, resolved via
+# scripts/ollama_gguf_path.py) or a raw GGUF file (GGUF_PATH overrides
+# OLLAMA_MODEL), e.g.:
+#   make llama-server GGUF_PATH=~/models/gemma-4-26B-A4B/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf
 OLLAMA_MODEL ?= granite4:tiny-h
 LLAMA_PORT ?= 8080
+GGUF_PATH ?= ~/models/gemma-4-26B-A4B/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf
 
 # Model registry key from agent.toml [models], e.g. `make run MODEL=anthropic`.
 MODEL ?=
@@ -37,7 +42,7 @@ help:
 	@echo "  run-local      run the agent CLI once against llama-server (PROMPT=\"...\")"
 	@echo "  chat           interactive streaming chat (MODEL=<registry key>)"
 	@echo "  chat-local     interactive streaming chat against llama-server"
-	@echo "  llama-server   serve an Ollama-pulled model via llama.cpp (OLLAMA_MODEL=...)"
+	@echo "  llama-server   serve a local model via llama.cpp (OLLAMA_MODEL=... or GGUF_PATH=...)"
 	@echo "  llama-server-stop  stop the background llama-server process"
 	@echo "  compose-build  build the agent image for deploy/compose.yaml"
 	@echo "  compose-up     start the agent + Langfuse stack"
@@ -106,9 +111,13 @@ chat-local:
 
 .PHONY: llama-server
 llama-server:
+ifdef GGUF_PATH
+	llama-server -m $(GGUF_PATH) --port $(LLAMA_PORT) --jinja -c 8192
+else
 	@MODEL_PATH=$$(uv run python scripts/ollama_gguf_path.py $(OLLAMA_MODEL)) || exit 1; \
 	echo "Serving $(OLLAMA_MODEL) from $$MODEL_PATH"; \
 	llama-server -m "$$MODEL_PATH" --port $(LLAMA_PORT) --jinja -c 8192
+endif
 
 .PHONY: llama-server-stop
 llama-server-stop:
@@ -149,7 +158,7 @@ compose-eval-up:
 # permissions (the image's baked-in `agent` user has no relation to your host
 # UID, so `chmod`-based fixes don't help here).
 .PHONY: compose-eval
-compose-eval: EVAL_MODEL = granite-local
+compose-eval: EVAL_MODEL = gemma-local
 compose-eval: compose-eval-up
 	mkdir -p logs
 	$(COMPOSE) -f $(COMPOSE_FILE) run --rm --no-deps \

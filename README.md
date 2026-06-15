@@ -338,6 +338,19 @@ make llama-server-stop
 `OLLAMA_MODEL`/`LLAMA_PORT` are overridable; `scripts/ollama_gguf_path.py`
 resolves the GGUF path from Ollama's local manifests (no extra download).
 
+To serve a manually-downloaded GGUF file instead (e.g. `[models.gemma-local]`),
+pass `GGUF_PATH` -- it overrides `OLLAMA_MODEL`:
+
+```bash
+make llama-server GGUF_PATH=~/models/gemma-4-26B-A4B/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf
+make run PROMPT="..." MODEL=gemma-local    # uses [models.gemma-local] -> http://localhost:8080/v1
+```
+
+Only one `llama-server` can run on a given `LLAMA_PORT` at a time, so
+`granite-local` and `gemma-local` are mutually exclusive unless you start a
+second server on a different `LLAMA_PORT` and update the model's `base_url`
+accordingly.
+
 ### Tests, lint, types, coverage
 
 ```bash

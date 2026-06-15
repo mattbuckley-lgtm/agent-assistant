@@ -43,6 +43,18 @@ name = "granite4:tiny-h"
 base_url = "http://localhost:8080/v1"
 native_tool_calling = true
 
+# Gemma 4 26B-A4B (MoE, 4B active params), served directly from a local GGUF
+# file via `make llama-server GGUF_PATH=~/models/gemma-4-26B-A4B/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf`
+# (no Ollama pull needed). Shares port 8080 with granite-local -- only run
+# one llama-server at a time. If tool calls don't work with this model's
+# chat template, set native_tool_calling = false (falls back to
+# agent/models/prompted_tools.py, like models.local-prompted).
+[models.gemma-local]
+provider = "openai_compat"
+name = "gemma-4-26B-A4B-it"
+base_url = "http://localhost:8080/v1"
+native_tool_calling = true
+
 # Generic local OpenAI-compatible server (llama.cpp's `llama-server`, vLLM,
 # etc.) for a model with no native function-calling support: falls back to
 # agent/models/prompted_tools.py.

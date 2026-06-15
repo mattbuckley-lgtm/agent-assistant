@@ -38,6 +38,16 @@ name = "granite4:tiny-h"
 base_url = "http://host.containers.internal:8080/v1"
 native_tool_calling = true
 
+# Gemma 4 26B-A4B via a `llama-server` running on the host (see `make
+# llama-server GGUF_PATH=...`), reached through podman/Docker's
+# host-gateway DNS name. Shares port 8080 with granite-local -- only run one
+# llama-server at a time.
+[models.gemma-local]
+provider = "openai_compat"
+name = "gemma-4-26B-A4B-it"
+base_url = "http://host.containers.internal:8080/v1"
+native_tool_calling = true
+
 # Each runs as its own isolated, network-restricted service (see
 # deploy/compose.yaml); the agent reaches them over streamable_http.
 [[mcp_servers]]
