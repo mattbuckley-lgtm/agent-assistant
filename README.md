@@ -12,8 +12,15 @@ README describes the system as it stands now.
 
 ## TL;DR
 
+Requires [`uv`](https://docs.astral.sh/uv/) (manages the Python version and
+installs everything else below). For local models you'll also need
+[`llama.cpp`](https://github.com/ggml-org/llama.cpp) (`llama-server` on
+`$PATH`) and optionally [`ollama`](https://ollama.com) (to pull GGUF weights);
+for the `compose-*` targets, Docker or Podman + the compose plugin (see
+`.env`'s `COMPOSE`).
+
 ```bash
-uv sync                                   # install
+uv sync                                   # install deps + dev tools into .venv
 uv run python -m agent "Please echo 'hello'."   # one-shot run (replay model, no network)
 make chat                                 # interactive REPL (replay model)
 make test                                 # unit tests
