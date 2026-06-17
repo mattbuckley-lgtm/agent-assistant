@@ -18,6 +18,10 @@ MODEL ?= $(shell sed -n 's/^AGENT_DEFAULT_MODEL=//p' .env 2>/dev/null)
 MODEL := $(if $(MODEL),$(MODEL),replay)
 MODEL_FLAG = --model $(MODEL)
 
+# How many times to run each eval sample (averages accuracy/stderr over runs).
+# Only meaningful with a real model -- replay is deterministic.
+EPOCHS ?= 1
+
 .PHONY: help
 help:
 	@echo "Targets:"
@@ -28,7 +32,8 @@ help:
 	@echo "  typecheck      pyright"
 	@echo "  test           pytest"
 	@echo "  coverage       pytest with coverage report (fails under threshold)"
-	@echo "  eval           run the Inspect AI eval suite (evals/tasks/, MODEL=<registry key>)"
+	@echo "  eval           run the Inspect AI eval suite (evals/tasks/, MODEL=<registry key>,"
+	@echo "                 EPOCHS=N to run each sample N times and average results)"
 	@echo "  eval-view      serve the Inspect log viewer over logs/ (http://localhost:7575)"
 	@echo "  check          lint + format-check + typecheck + coverage (CI gate)"
 	@echo "  run            run the agent CLI once (PROMPT=\"...\", MODEL=<registry key>)"
@@ -79,7 +84,7 @@ coverage:
 .PHONY: eval
 eval:
 	uv run python scripts/local_model.py $(MODEL) -- \
-		uv run python -m inspect_ai eval evals/tasks/ -T model=$(MODEL)
+		uv run python -m inspect_ai eval evals/tasks/ -T model=$(MODEL) -T epochs=$(EPOCHS)
 
 .PHONY: eval-view
 eval-view:
@@ -158,7 +163,7 @@ compose-eval: compose-eval-up
 			-e INSPECT_LOG_DIR=/app/logs \
 			-v $(CURDIR)/logs:/app/logs \
 			--entrypoint python \
-			agent -m inspect_ai eval evals/tasks/ -T model=$(MODEL); \
+			agent -m inspect_ai eval evals/tasks/ -T model=$(MODEL) -T epochs=$(EPOCHS); \
 	status=$$?; $(MAKE) compose-eval-down; exit $$status
 
 .PHONY: compose-eval-down

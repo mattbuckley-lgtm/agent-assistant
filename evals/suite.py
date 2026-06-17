@@ -50,7 +50,7 @@ def _record_to_sample(record: dict[str, Any]) -> Sample:
     )
 
 
-def case_task(filename: str, model: str = "replay") -> Task:
+def case_task(filename: str, model: str = "replay", epochs: int = 1) -> Task:
     """Build a `Task` from `evals/cases/<filename>`: one sample per
     `EvalCase` record, run via `run_eval_case` and graded by every scorer in
     `evals.scorers` (each scorer no-ops for cases that don't set the relevant
@@ -59,10 +59,16 @@ def case_task(filename: str, model: str = "replay") -> Task:
     `model` selects what plays the assistant role: `"replay"` (default)
     deterministically replays each case's cassette; any other value is a
     registry key from `agent.toml`'s `[models]` (e.g. `"granite-local"`),
-    resolved the same way as `python -m agent --model <key>`."""
+    resolved the same way as `python -m agent --model <key>`.
+
+    `epochs` runs each sample that many times; accuracy/stderr metrics in the
+    Inspect log viewer are then averages over all runs. Only meaningful with a
+    real (stochastic) model -- replay is deterministic so epochs > 1 adds no
+    information."""
     return Task(
         dataset=json_dataset(str(CASES_DIR / filename), sample_fields=_record_to_sample),
         solver=run_eval_case(model),
+        epochs=epochs,
         scorer=[
             overall(),
             response_includes(),
