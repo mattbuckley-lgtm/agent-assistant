@@ -17,6 +17,8 @@ default_model = "replay"
 # TOML attaches trailing key/value pairs to the most recently opened table.
 skills_dir = "skills"
 system_prompt = "You are a helpful agent."
+agents_dir = "agents"
+max_subagent_depth = 3
 
 # Deterministic replay model + the echo-clock MCP server, with echo/clock
 # allowed. Used by tests and `make eval`.

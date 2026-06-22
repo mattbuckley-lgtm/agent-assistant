@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from agent.agents.card import MockToolResult  # noqa: F401 (re-exported for backward compat)
 from agent.mcp.permissions import AllowRule
 
 
@@ -29,23 +30,19 @@ class ExpectedToolCall(BaseModel):
     args: dict[str, object] | None = None
 
 
-class MockToolResult(BaseModel):
-    """A canned tool result, used in place of a real MCP server call.
+class SubAgentMockOverride(BaseModel):
+    """Per-sub-agent overrides for eval cases that exercise sub-agent routing.
 
-    `description`/`input_schema` are advertised to the model exactly like a
-    real MCP tool's (see `agent.core.messages.ToolSpec`) -- get these right,
-    or a model that takes tool schemas literally (e.g. one whose
-    function-calling grammar is constrained by `input_schema`) may omit
-    arguments the eval's `expected_tool_calls`/scorers expect."""
+    `mock_tools` replaces the sub-agent's MCP tool registry with canned
+    results so no live server is needed. `cassette` (if set) overrides the
+    per-agent TOML's replay cassette for this specific eval case -- useful
+    when multiple cases share the same agent TOML but need different model
+    behaviour (e.g. the injection-carrying researcher vs the clean one).
+    """
 
-    server: str
-    tool: str
-    content: str
-    is_error: bool = False
-    description: str = ""
-    input_schema: dict[str, object] = Field(
-        default_factory=lambda: {"type": "object", "properties": {}}
-    )
+    agent_name: str
+    mock_tools: list[MockToolResult] = Field(default_factory=list[MockToolResult])
+    cassette: str = ""
 
 
 class ConversationTurn(BaseModel):
@@ -82,6 +79,12 @@ class EvalCase(BaseModel):
     # Overrides of the shared agent.toml configuration.
     mock_tools: list[MockToolResult] = Field(default_factory=list[MockToolResult])
     permissions: list[AllowRule] | None = None
+
+    # Sub-agent eval configuration (used with run_subagent_eval_case).
+    subagent_mocks: list[SubAgentMockOverride] = Field(default_factory=list[SubAgentMockOverride])
+    initial_ancestry: list[str] = Field(default_factory=list[str])
+    initial_budget: int | None = None
+    guard_signal: str | None = None
 
     # Single-turn ground truth (checked when `turns` is empty).
     expected_tool_calls: list[ExpectedToolCall] = Field(default_factory=list[ExpectedToolCall])

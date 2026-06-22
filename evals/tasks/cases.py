@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from inspect_ai import Task, task
 
-from evals.suite import case_task
+from evals.suite import case_task, subagent_task
 
 
 @task
@@ -54,3 +54,12 @@ def multiturn(model: str = "replay", epochs: int = 1) -> Task:
     request by asking a clarifying question, then calls the right tool with
     the user's answer and reports the result."""
     return case_task("multiturn.jsonl", model, epochs)
+
+
+@task
+def subagents(model: str = "replay", epochs: int = 1) -> Task:
+    """Sub-agent orchestration ground truth: routing, quarantine boundary, and
+    guard-fire cases (depth exceeded, cycle detected, budget exhausted). Runs
+    through the full AgentRegistry + SubAgentToolAdapter stack with mock/replay
+    models for all agents in the tree."""
+    return subagent_task("subagents.jsonl", "orchestrator", model, epochs)

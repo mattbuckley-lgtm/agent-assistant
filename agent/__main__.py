@@ -18,6 +18,9 @@ import uuid
 
 from opentelemetry.trace import Tracer
 
+from agent.agents.composite import CompositeToolRegistry
+from agent.agents.registry import AgentRegistry, Budget
+from agent.agents.subagent_tools import SubAgentToolAdapter
 from agent.composition import build_model, build_permissions, build_skills
 from agent.config import AgentSettings
 from agent.core.entrypoint import run_agent
@@ -39,6 +42,12 @@ async def main(argv: list[str]) -> int:
         help="model registry key from agent.toml [models] (default: default_model)",
     )
     parser.add_argument("--chat", action="store_true", help="interactive streaming chat REPL")
+    parser.add_argument(
+        "--agent",
+        default=None,
+        metavar="NAME",
+        help="run a named agent from the agents_dir (e.g. orchestrator) with sub-agent support",
+    )
     args = parser.parse_args(argv)
 
     if not args.chat and args.prompt is None:
@@ -46,54 +55,131 @@ async def main(argv: list[str]) -> int:
 
     settings = AgentSettings()  # type: ignore[call-arg]  # models come from agent.toml/env
 
-    try:
-        model_config = settings.resolve_model(args.model)
-    except ValueError as exc:
-        parser.error(str(exc))
-
-    model = build_model(model_config)
-    permissions = build_permissions(settings)
-    skills = build_skills(settings)
-
     tracer_provider = build_tracer_provider(settings.otel)
     tracer = tracer_provider.get_tracer(settings.otel.service_name)
 
-    async with MCPToolRegistry(settings.mcp_servers) as tools:
-        if args.chat:
-            await run_chat(
-                model=model,
-                tools=tools,
-                skills=skills,
-                permissions=permissions,
-                tracer=tracer,
-                max_steps=settings.max_steps,
-                system_prompt=settings.system_prompt,
-            )
-        else:
-            assert args.prompt is not None
-            task = Task(
-                id=args.task_id,
-                system_prompt=settings.system_prompt,
-                messages=[Message(role="user", content=[TextBlock(text=args.prompt)])],
-            )
-            result = await run_agent(
-                task,
-                model=model,
-                tools=tools,
-                skills=skills,
-                permissions=permissions,
-                sink=OtelSink(tracer),
-                max_steps=settings.max_steps,
-            )
+    if args.agent is not None:
+        await _run_named_agent(args, settings, tracer)
+    else:
+        try:
+            model_config = settings.resolve_model(args.model)
+        except ValueError as exc:
+            parser.error(str(exc))
 
-            print(f"stop_reason: {result.stop_reason}")
-            print(f"usage: {result.usage.model_dump()}")
-            print("---")
-            print(result.final_text())
+        model = build_model(model_config)
+        permissions = build_permissions(settings)
+        skills = build_skills(settings)
+
+        async with MCPToolRegistry(settings.mcp_servers) as tools:
+            if args.chat:
+                await run_chat(
+                    model=model,
+                    tools=tools,
+                    skills=skills,
+                    permissions=permissions,
+                    tracer=tracer,
+                    max_steps=settings.max_steps,
+                    system_prompt=settings.system_prompt,
+                )
+            else:
+                assert args.prompt is not None
+                task = Task(
+                    id=args.task_id,
+                    system_prompt=settings.system_prompt,
+                    messages=[Message(role="user", content=[TextBlock(text=args.prompt)])],
+                )
+                result = await run_agent(
+                    task,
+                    model=model,
+                    tools=tools,
+                    skills=skills,
+                    permissions=permissions,
+                    sink=OtelSink(tracer),
+                    max_steps=settings.max_steps,
+                )
+
+                print(f"stop_reason: {result.stop_reason}")
+                print(f"usage: {result.usage.model_dump()}")
+                print("---")
+                print(result.final_text())
 
     tracer_provider.shutdown()
 
     return 0
+
+
+async def _run_named_agent(
+    args: argparse.Namespace,
+    settings: AgentSettings,
+    tracer: object,
+) -> None:
+    """Run a named agent from `agents_dir`, wiring sub-agents as tools."""
+
+    agents_dir = settings.agents_dir
+    if agents_dir is None:
+        raise SystemExit("agents_dir not set in agent.toml -- cannot use --agent")
+
+    agent_name: str = args.agent
+    otel_sink = OtelSink(tracer)  # type: ignore[arg-type]
+
+    async with AgentRegistry(agents_dir, settings) as registry:
+        runtime = await registry.get_runtime(agent_name)
+
+        try:
+            model_config = runtime.settings.resolve_model(args.model)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+        model = build_model(model_config)
+
+        budget = Budget.new(settings.max_steps * settings.max_subagent_depth)
+        sink = FanOutSink([StreamingConsoleSink(), otel_sink])
+
+        adapter = SubAgentToolAdapter(
+            registry=registry,
+            subagent_names=runtime.card.subagents,
+            parent_name=agent_name,
+            ancestry=(),
+            budget=budget,
+            sink=sink,
+        )
+
+        async with MCPToolRegistry(runtime.settings.mcp_servers) as mcp_tools:
+            tools: ToolRegistry
+            if adapter.list_tool_specs():
+                tools = CompositeToolRegistry([mcp_tools, adapter])
+            else:
+                tools = mcp_tools
+
+            if args.chat:
+                await run_chat(
+                    model=model,
+                    tools=tools,
+                    skills=runtime.skills,
+                    permissions=runtime.permissions,
+                    tracer=tracer,  # type: ignore[arg-type]
+                    max_steps=runtime.settings.max_steps,
+                    system_prompt=runtime.settings.system_prompt,
+                )
+            else:
+                assert args.prompt is not None
+                task = Task(
+                    id=args.task_id,
+                    system_prompt=runtime.settings.system_prompt,
+                    messages=[Message(role="user", content=[TextBlock(text=args.prompt)])],
+                )
+                result = await run_agent(
+                    task,
+                    model=model,
+                    tools=tools,
+                    skills=runtime.skills,
+                    permissions=runtime.permissions,
+                    sink=sink,
+                    max_steps=runtime.settings.max_steps,
+                )
+                print(f"stop_reason: {result.stop_reason}")
+                print(f"usage: {result.usage.model_dump()}")
+                print("---")
+                print(result.final_text())
 
 
 async def _stdin_approval(server: str, tool: str, args: dict[str, object]) -> bool:

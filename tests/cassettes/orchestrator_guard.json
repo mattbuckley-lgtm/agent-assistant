@@ -1,0 +1,15 @@
+{
+  "turns": [
+    [
+      {"type": "text_delta", "text": "I'll try to delegate this to the researcher."},
+      {"type": "tool_call_complete", "block": {"type": "tool_use", "id": "call_1", "name": "researcher", "input": {"task": "Research Python"}}},
+      {"type": "usage", "usage": {"input_tokens": 60, "output_tokens": 20}},
+      {"type": "done", "stop_reason": "tool_use"}
+    ],
+    [
+      {"type": "text_delta", "text": "The sub-agent call was blocked by a guard. I cannot complete this task through the sub-agent."},
+      {"type": "usage", "usage": {"input_tokens": 120, "output_tokens": 25}},
+      {"type": "done", "stop_reason": "end_turn"}
+    ]
+  ]
+}

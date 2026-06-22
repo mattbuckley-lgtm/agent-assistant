@@ -1,0 +1,15 @@
+{
+  "turns": [
+    [
+      {"type": "text_delta", "text": "I'll delegate this fact-checking task to the fact_checker agent."},
+      {"type": "tool_call_complete", "block": {"type": "tool_use", "id": "call_1", "name": "fact_checker", "input": {"task": "Verify the claim: Python was created by Guido van Rossum"}}},
+      {"type": "usage", "usage": {"input_tokens": 80, "output_tokens": 25}},
+      {"type": "done", "stop_reason": "tool_use"}
+    ],
+    [
+      {"type": "text_delta", "text": "The fact checker confirms: SUPPORTED. Python was indeed created by Guido van Rossum, as verified by authoritative sources."},
+      {"type": "usage", "usage": {"input_tokens": 150, "output_tokens": 35}},
+      {"type": "done", "stop_reason": "end_turn"}
+    ]
+  ]
+}

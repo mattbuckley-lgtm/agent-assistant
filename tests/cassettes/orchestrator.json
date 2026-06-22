@@ -1,0 +1,15 @@
+{
+  "turns": [
+    [
+      {"type": "text_delta", "text": "I'll delegate this research task to the researcher agent."},
+      {"type": "tool_call_complete", "block": {"type": "tool_use", "id": "call_1", "name": "researcher", "input": {"task": "Find information about the Python programming language"}}},
+      {"type": "usage", "usage": {"input_tokens": 80, "output_tokens": 25}},
+      {"type": "done", "stop_reason": "tool_use"}
+    ],
+    [
+      {"type": "text_delta", "text": "Based on the research: Python is a general-purpose, high-level programming language known for its simplicity and versatility, created by Guido van Rossum in 1991."},
+      {"type": "usage", "usage": {"input_tokens": 150, "output_tokens": 40}},
+      {"type": "done", "stop_reason": "end_turn"}
+    ]
+  ]
+}

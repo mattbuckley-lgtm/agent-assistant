@@ -1,0 +1,9 @@
+{
+  "turns": [
+    [
+      {"type": "text_delta", "text": "Research findings: Python is a general-purpose, high-level programming language known for its simplicity, readability, and versatility. It was created by Guido van Rossum and first released in 1991. Source: general knowledge. Confidence: HIGH."},
+      {"type": "usage", "usage": {"input_tokens": 50, "output_tokens": 45}},
+      {"type": "done", "stop_reason": "end_turn"}
+    ]
+  ]
+}

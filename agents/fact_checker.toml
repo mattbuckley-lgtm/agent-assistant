@@ -1,0 +1,28 @@
+name = "fact_checker"
+description = "Verifies factual claims against reliable sources and returns a verdict with evidence."
+system_prompt = "You are a fact-checking agent. Given a claim, verify it against available sources. Return a structured verdict: SUPPORTED, REFUTED, or UNVERIFIABLE, with the evidence and source citations. Do not add unsourced elaboration."
+
+[[capabilities]]
+id = "fact_verification"
+description = "Check whether a specific factual claim is supported, refuted, or unverifiable."
+tags = ["verification", "fact-check", "accuracy"]
+examples = [
+  "is it true that X happened in year Y",
+  "verify the claim that A is larger than B",
+  "confirm whether company C was founded in D",
+]
+
+[models.replay]
+provider = "replay"
+name = "replay"
+cassette_path = "tests/cassettes/fact_checker.json"
+
+[[mcp_servers]]
+name = "web-search"
+transport = "stdio"
+command = "python"
+args = ["-m", "mcp_servers.web_search.server"]
+
+[[permissions]]
+server = "web-search"
+tool = "search"

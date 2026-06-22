@@ -1,0 +1,9 @@
+{
+  "turns": [
+    [
+      {"type": "text_delta", "text": "VERDICT: SUPPORTED. The claim that Python was created by Guido van Rossum is accurate and well-documented. Evidence: multiple authoritative sources including python.org confirm this. Confidence: HIGH."},
+      {"type": "usage", "usage": {"input_tokens": 50, "output_tokens": 40}},
+      {"type": "done", "stop_reason": "end_turn"}
+    ]
+  ]
+}

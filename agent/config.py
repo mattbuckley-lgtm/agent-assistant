@@ -17,6 +17,7 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
+from agent.agents.card import Capability
 from agent.mcp.permissions import AllowRule
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -99,10 +100,18 @@ class AgentSettings(BaseSettings):
     otel: OtelConfig = Field(default_factory=OtelConfig)
     skills_dir: Path | None = None
     max_steps: int = 20
+    # Agent identity (populated from per-agent TOML; not required in agent.toml)
+    name: str | None = None
+    description: str = ""
+    capabilities: list[Capability] = Field(default_factory=list[Capability])
+    subagents: list[str] = Field(default_factory=list[str])
+    # Multi-agent registry
+    agents_dir: Path | None = None
+    max_subagent_depth: int = 3
 
-    @field_validator("skills_dir")
+    @field_validator("skills_dir", "agents_dir")
     @classmethod
-    def _resolve_skills_dir(cls, value: Path | None) -> Path | None:
+    def _resolve_dir(cls, value: Path | None) -> Path | None:
         """Resolve relative to the repo root, not the process cwd -- e.g.
         `inspect_ai` chdirs into `evals/tasks/` while loading eval tasks."""
         if value is None or value.is_absolute():

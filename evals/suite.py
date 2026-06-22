@@ -16,9 +16,10 @@ from typing import Any
 from inspect_ai import Task
 from inspect_ai.dataset import Sample, json_dataset
 
-from evals.bridge import run_eval_case
+from evals.bridge import run_eval_case, run_subagent_eval_case
 from evals.scorers import (
     denied_tools_not_executed,
+    guard_signal_present,
     no_unexpected_tool_calls,
     overall,
     response_includes,
@@ -47,6 +48,38 @@ def _record_to_sample(record: dict[str, Any]) -> Sample:
         target=display_target,
         id=case.name,
         metadata=case.model_dump(mode="json"),
+    )
+
+
+def subagent_task(
+    filename: str,
+    agent_name: str = "orchestrator",
+    model: str = "replay",
+    epochs: int = 1,
+) -> Task:
+    """Like `case_task`, but uses `run_subagent_eval_case` as the solver so the
+    full `AgentRegistry` + `SubAgentToolAdapter` + `CompositeToolRegistry` stack
+    is exercised. Also includes `guard_signal_present` in the scorer list."""
+    all_scorers = [
+        overall(),
+        response_includes(),
+        stop_reason_matches(),
+        tool_calls_match(),
+        skills_used(),
+        denied_tools_not_executed(),
+        no_unexpected_tool_calls(),
+        turn_tool_calls_match(),
+        turn_stop_reasons_match(),
+        turn_responses_include(),
+        turn_denied_tools_not_executed(),
+        turn_no_unexpected_tool_calls(),
+        guard_signal_present(),
+    ]
+    return Task(
+        dataset=json_dataset(str(CASES_DIR / filename), sample_fields=_record_to_sample),
+        solver=run_subagent_eval_case(agent_name, model),
+        epochs=epochs,
+        scorer=all_scorers,
     )
 
 

@@ -392,6 +392,40 @@ def turn_no_unexpected_tool_calls() -> Scorer:
 
 
 @scorer(metrics=[accuracy(), stderr()])
+def guard_signal_present() -> Scorer:
+    """Pass iff `guard_signal` (if set) appears as a prefix of the `content`
+    field of any `tool_call_finished` result in the transcript.
+
+    Used to verify that sub-agent depth/cycle/budget guards fire cleanly and
+    produce a recognisable signal rather than hanging or raising an exception.
+    The stable prefix strings are defined in `agent/agents/subagent_tools.py`:
+    `SUBAGENT_DEPTH_EXCEEDED:`, `SUBAGENT_CYCLE_DETECTED:`,
+    `SUBAGENT_BUDGET_EXHAUSTED:`."""
+
+    async def score(state: TaskState, target: Target) -> Score:
+        case = state.metadata_as(EvalCase)
+        if not case.guard_signal:
+            return Score(value=CORRECT, explanation="no guard_signal for this case")
+
+        transcript = state.store.get("transcript", [])
+        for event in transcript:
+            if event.get("type") == "tool_call_finished":
+                result = event.get("result", {})
+                content = result.get("content", "")
+                if isinstance(content, str) and content.startswith(case.guard_signal):
+                    return Score(
+                        value=CORRECT,
+                        explanation=f"guard signal '{case.guard_signal}' found in transcript",
+                    )
+        return Score(
+            value=INCORRECT,
+            explanation=f"guard signal '{case.guard_signal}' not found in any tool_call_finished",
+        )
+
+    return score
+
+
+@scorer(metrics=[accuracy(), stderr()])
 def overall() -> Scorer:
     """Single pass/fail judgment per sample: CORRECT iff every one of the
     other scorers is CORRECT for this case (each is trivially CORRECT for
@@ -414,5 +448,6 @@ def overall() -> Scorer:
         turn_responses_include(),
         turn_denied_tools_not_executed(),
         turn_no_unexpected_tool_calls(),
+        guard_signal_present(),
     ]
     return multi_scorer(checks, at_least(len(checks)))

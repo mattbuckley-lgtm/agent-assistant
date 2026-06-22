@@ -21,6 +21,9 @@ from pathlib import Path
 from inspect_ai.model import ChatMessageAssistant, ChatMessageUser, ModelOutput
 from inspect_ai.solver import Generate, Solver, TaskState, solver
 
+from agent.agents.composite import CompositeToolRegistry
+from agent.agents.registry import AgentRegistry, Budget
+from agent.agents.subagent_tools import SubAgentToolAdapter
 from agent.composition import (
     build_model,
     build_permissions,
@@ -29,7 +32,7 @@ from agent.composition import (
 )
 from agent.config import AgentSettings
 from agent.core.entrypoint import run_agent
-from agent.core.interfaces import Model, PermissionPolicy
+from agent.core.interfaces import Model, PermissionPolicy, ToolRegistry
 from agent.core.messages import Message, TextBlock
 from agent.core.state import Task
 from agent.mcp.registry import MCPToolRegistry
@@ -153,6 +156,118 @@ def run_eval_case(model: str = "replay") -> Solver:
                     "transcript", [e.model_dump(mode="json") for e in result.transcript]
                 )
                 state.store.set("stop_reason", result.stop_reason)
+
+        return state
+
+    return solve
+
+
+@solver
+def run_subagent_eval_case(agent_name: str = "orchestrator", model: str = "replay") -> Solver:
+    """Run a sub-agent eval case: loads the `AgentRegistry`, builds the named
+    parent agent with mock sub-agent tools, and runs it through `run_agent`.
+
+    The parent's model is overridden by the case's `cassette` (replay mode) or
+    a real model from `[models]` (when `model != 'replay'`). Sub-agents use
+    their per-agent TOML cassettes unless `SubAgentMockOverride.cassette` is
+    set. All events from the whole agent tree (parent + children) land in
+    `state.store["transcript"]` so existing scorers can grade routing, denial,
+    and guard signals without changes.
+
+    `initial_ancestry` / `initial_budget` on the case control the guard tests:
+    set `initial_budget = 0` for budget-exhausted, or `initial_ancestry` to a
+    chain that reaches max depth for depth-exceeded, or include the parent agent
+    name in `initial_ancestry` for cycle detection."""
+
+    settings = AgentSettings()  # type: ignore[call-arg]
+    agents_dir = settings.agents_dir
+
+    async def solve(state: TaskState, generate: Generate) -> TaskState:
+        case = state.metadata_as(EvalCase)
+        sample_id = str(state.sample_id)
+
+        if agents_dir is None:
+            raise RuntimeError("agents_dir not set in agent.toml -- cannot run subagent eval")
+
+        # Build per-sub-agent mock registries and model overrides.
+        mock_by_agent: dict[str, ToolRegistry] = {}
+        mock_model_by_agent: dict[str, Model] = {}
+        for override in case.subagent_mocks:
+            if override.mock_tools:
+                mock_by_agent[override.agent_name] = MockToolRegistry(override.mock_tools)
+            if override.cassette:
+                mock_model_by_agent[override.agent_name] = ReplayModel(
+                    CASSETTES_DIR / override.cassette, name="replay"
+                )
+
+        async with AgentRegistry(
+            agents_dir,
+            settings,
+            mock_registry_by_agent=mock_by_agent,
+            mock_model_by_agent=mock_model_by_agent,
+            default_to_empty_mocks=True,
+        ) as registry:
+            runtime = await registry.get_runtime(agent_name)
+
+            # Override the parent model with the case's cassette or real model.
+            if model == "replay":
+                parent_model: Model = ReplayModel(CASSETTES_DIR / case.cassette, name="replay")
+            else:
+                parent_model = build_model(settings.resolve_model(model))
+
+            parent_permissions: PermissionPolicy = (
+                build_permissions_from_rules(case.permissions)
+                if case.permissions is not None
+                else runtime.permissions
+            )
+
+            # Shared sink: ALL events (parent + children) land here so scorers
+            # can see the full tree, including sub-agent tool_call_requested events.
+            shared_sink = InMemorySink()
+
+            max_steps = settings.max_steps * settings.max_subagent_depth
+            budget = Budget.new(
+                case.initial_budget if case.initial_budget is not None else max_steps
+            )
+            ancestry = tuple(case.initial_ancestry)
+
+            adapter = SubAgentToolAdapter(
+                registry=registry,
+                subagent_names=runtime.card.subagents,
+                parent_name=agent_name,
+                ancestry=ancestry,
+                budget=budget,
+                sink=shared_sink,
+            )
+
+            parent_tools: ToolRegistry
+            if adapter.list_tool_specs():
+                parent_tools = CompositeToolRegistry([runtime.mcp_tools, adapter])
+            else:
+                parent_tools = runtime.mcp_tools
+
+            agent_task = Task(
+                id=sample_id,
+                system_prompt=case.system_prompt or runtime.settings.system_prompt,
+                messages=[Message(role="user", content=[TextBlock(text=state.input_text)])],
+            )
+            result = await run_agent(
+                agent_task,
+                model=parent_model,
+                tools=parent_tools,
+                skills=runtime.skills,
+                permissions=parent_permissions,
+                sink=shared_sink,
+                max_steps=runtime.settings.max_steps,
+            )
+
+        final_text = result.final_text()
+        active_model_name = parent_model.name if model == "replay" else model
+        state.output = ModelOutput.from_content(model=active_model_name, content=final_text)
+        state.messages.append(ChatMessageAssistant(content=final_text))
+        # Use shared_sink.events so scorers see parent + child events.
+        state.store.set("transcript", [e.model_dump(mode="json") for e in shared_sink.events])
+        state.store.set("stop_reason", result.stop_reason)
 
         return state
 

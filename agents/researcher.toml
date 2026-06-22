@@ -1,0 +1,28 @@
+name = "researcher"
+description = "Searches the web and returns sourced, typed findings with source citations and confidence."
+system_prompt = "You are a research agent. Find and synthesise current information from available tools. Always cite your sources and indicate confidence. Return structured findings: claims, sources, and confidence level. Do not elaborate beyond what the sources support."
+
+[[capabilities]]
+id = "web_research"
+description = "Find and synthesise current information from the web."
+tags = ["web", "search", "research"]
+examples = [
+  "latest news on X",
+  "compare A vs B as of this month",
+  "what is the current state of Y",
+]
+
+[models.replay]
+provider = "replay"
+name = "replay"
+cassette_path = "tests/cassettes/researcher.json"
+
+[[mcp_servers]]
+name = "web-search"
+transport = "stdio"
+command = "python"
+args = ["-m", "mcp_servers.web_search.server"]
+
+[[permissions]]
+server = "web-search"
+tool = "search"

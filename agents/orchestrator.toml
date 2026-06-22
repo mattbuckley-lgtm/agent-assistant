@@ -1,0 +1,26 @@
+name = "orchestrator"
+description = "Routes tasks to specialist sub-agents and synthesises their results into a final answer."
+system_prompt = "You are an orchestrator agent. Delegate tasks to sub-agents based on their capabilities and synthesise their results into a single answer. Do not fabricate information — transcribe what sub-agents return."
+subagents = ["researcher", "fact_checker"]
+
+[[capabilities]]
+id = "task_routing"
+description = "Selects the best sub-agent for a task based on capability matching and delegates to it."
+tags = ["routing", "orchestration"]
+examples = [
+  "find current information about X and summarise",
+  "check whether claim Y is accurate",
+]
+
+[models.replay]
+provider = "replay"
+name = "replay"
+cassette_path = "tests/cassettes/orchestrator.json"
+
+[[permissions]]
+server = "subagent:researcher"
+tool = "researcher"
+
+[[permissions]]
+server = "subagent:fact_checker"
+tool = "fact_checker"
