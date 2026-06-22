@@ -21,10 +21,15 @@ from pathlib import Path
 from inspect_ai.model import ChatMessageAssistant, ChatMessageUser, ModelOutput
 from inspect_ai.solver import Generate, Solver, TaskState, solver
 
-from agent.composition import build_model, build_permissions, build_permissions_from_rules, build_skills
+from agent.composition import (
+    build_model,
+    build_permissions,
+    build_permissions_from_rules,
+    build_skills,
+)
 from agent.config import AgentSettings
 from agent.core.entrypoint import run_agent
-from agent.core.interfaces import Model, PermissionPolicy, ToolRegistry
+from agent.core.interfaces import Model, PermissionPolicy
 from agent.core.messages import Message, TextBlock
 from agent.core.state import Task
 from agent.mcp.registry import MCPToolRegistry
@@ -72,7 +77,6 @@ def run_eval_case(model: str = "replay") -> Solver:
             else MCPToolRegistry(settings.mcp_servers)
         )
         async with tools_impl as tools:
-
             if case.turns:
                 accumulated: list[Message] = []
                 turn_transcripts: list[list[dict[str, object]]] = []

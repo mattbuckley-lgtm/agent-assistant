@@ -126,10 +126,12 @@ async def test_deny_rule_overrides_allow_rule_for_same_tool() -> None:
     """A DENY rule beats an ALLOW rule for the same tool regardless of order --
     deny-priority semantics, same as AWS IAM / firewall models."""
     model = ReplayModel(CASSETTE)
-    permissions = AllowlistPolicy([
-        AllowRule(server="echo-clock", tool="echo"),  # ALLOW first
-        AllowRule(server="echo-clock", tool="echo", decision=Decision.DENY),  # DENY second
-    ])
+    permissions = AllowlistPolicy(
+        [
+            AllowRule(server="echo-clock", tool="echo"),  # ALLOW first
+            AllowRule(server="echo-clock", tool="echo", decision=Decision.DENY),  # DENY second
+        ]
+    )
     sink = InMemorySink()
     task = Task(
         id="echo-hello-deny-wins",
@@ -137,7 +139,7 @@ async def test_deny_rule_overrides_allow_rule_for_same_tool() -> None:
     )
 
     async with MCPToolRegistry([ECHO_CLOCK_SERVER]) as tools:
-        result = await run_agent(
+        await run_agent(
             task,
             model=model,
             tools=tools,

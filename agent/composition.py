@@ -10,7 +10,7 @@ import os
 
 from agent.config import AgentSettings, ModelConfig
 from agent.core.interfaces import Model, PermissionPolicy, SkillRegistry
-from agent.mcp.permissions import AllowRule, AllowlistPolicy
+from agent.mcp.permissions import AllowlistPolicy, AllowRule
 from agent.models.anthropic import AnthropicModel
 from agent.models.openai_compat import OpenAICompatModel
 from agent.models.prompted_tools import PromptedToolsModel
