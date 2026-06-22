@@ -5,6 +5,8 @@ instead of a real MCP server -- for fully offline, deterministic eval cases
 
 from __future__ import annotations
 
+from types import TracebackType
+
 from agent.core.messages import ToolResultBlock, ToolSpec
 from evals.spec import MockToolResult
 
@@ -21,6 +23,17 @@ class MockToolRegistry:
             ToolSpec(name=m.tool, description=m.description, input_schema=m.input_schema)
             for m in mocks
         ]
+
+    async def __aenter__(self) -> MockToolRegistry:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        pass
 
     def list_tool_specs(self) -> list[ToolSpec]:
         return self._tool_specs

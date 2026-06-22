@@ -15,9 +15,11 @@ from agent.core.interfaces import (
     ToolRegistry,
     TranscriptSink,
 )
-from agent.core.loop import DEFAULT_SYSTEM_PROMPT, compose_system_prompt, run_steps
+from agent.core.loop import compose_system_prompt, run_steps
 from agent.core.state import RunResult, Task
 from agent.observability.sink import FanOutSink, InMemorySink
+
+_FALLBACK_SYSTEM_PROMPT = "You are a helpful agent."
 
 
 async def run_agent(
@@ -38,7 +40,7 @@ async def run_agent(
     recorder = InMemorySink()
     fanout = FanOutSink([recorder, sink])
 
-    system = compose_system_prompt(task.system_prompt or DEFAULT_SYSTEM_PROMPT, skills)
+    system = compose_system_prompt(task.system_prompt or _FALLBACK_SYSTEM_PROMPT, skills)
     messages = list(task.messages)
 
     await fanout.emit(RunStarted(run_id=run_id, task_name=task.id))

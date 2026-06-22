@@ -93,6 +93,7 @@ class AgentSettings(BaseSettings):
 
     models: dict[str, ModelConfig]
     default_model: str
+    system_prompt: str = "You are a helpful agent."
     mcp_servers: list[MCPServerConfig] = Field(default_factory=list[MCPServerConfig])
     permissions: list[AllowRule] = Field(default_factory=list[AllowRule])
     otel: OtelConfig = Field(default_factory=OtelConfig)

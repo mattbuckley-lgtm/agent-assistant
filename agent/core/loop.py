@@ -49,8 +49,6 @@ from agent.models.base import (
     Usage,
 )
 
-DEFAULT_SYSTEM_PROMPT = "You are a helpful agent."
-
 # Guard rail: hard stop if the same (tool, args) call repeats this many times.
 MAX_REPEATED_TOOL_CALLS = 3
 

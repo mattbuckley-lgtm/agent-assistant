@@ -16,19 +16,17 @@ the same way `python -m agent --model <key>` does.
 
 from __future__ import annotations
 
-import contextlib
 from pathlib import Path
 
 from inspect_ai.model import ChatMessageAssistant, ChatMessageUser, ModelOutput
 from inspect_ai.solver import Generate, Solver, TaskState, solver
 
-from agent.composition import build_model, build_permissions, build_skills
+from agent.composition import build_model, build_permissions, build_permissions_from_rules, build_skills
 from agent.config import AgentSettings
 from agent.core.entrypoint import run_agent
 from agent.core.interfaces import Model, PermissionPolicy, ToolRegistry
 from agent.core.messages import Message, TextBlock
 from agent.core.state import Task
-from agent.mcp.permissions import AllowlistPolicy
 from agent.mcp.registry import MCPToolRegistry
 from agent.models.replay import ReplayModel
 from agent.observability.sink import InMemorySink
@@ -63,17 +61,17 @@ def run_eval_case(model: str = "replay") -> Solver:
         case = state.metadata_as(EvalCase)
         sample_id = str(state.sample_id)
         permissions: PermissionPolicy = (
-            AllowlistPolicy(case.permissions)
+            build_permissions_from_rules(case.permissions)
             if case.permissions is not None
             else default_permissions
         )
 
-        async with contextlib.AsyncExitStack() as stack:
-            tools: ToolRegistry
-            if case.mock_tools:
-                tools = MockToolRegistry(case.mock_tools)
-            else:
-                tools = await stack.enter_async_context(MCPToolRegistry(settings.mcp_servers))
+        tools_impl: MockToolRegistry | MCPToolRegistry = (
+            MockToolRegistry(case.mock_tools)
+            if case.mock_tools
+            else MCPToolRegistry(settings.mcp_servers)
+        )
+        async with tools_impl as tools:
 
             if case.turns:
                 accumulated: list[Message] = []
@@ -90,7 +88,7 @@ def run_eval_case(model: str = "replay") -> Solver:
                     )
                     agent_task = Task(
                         id=sample_id,
-                        system_prompt=case.system_prompt,
+                        system_prompt=case.system_prompt or settings.system_prompt,
                         messages=list(accumulated),
                     )
                     turn_result = await run_agent(
@@ -133,7 +131,7 @@ def run_eval_case(model: str = "replay") -> Solver:
                 )
                 agent_task = Task(
                     id=sample_id,
-                    system_prompt=case.system_prompt,
+                    system_prompt=case.system_prompt or settings.system_prompt,
                     messages=[Message(role="user", content=[TextBlock(text=state.input_text)])],
                 )
                 result = await run_agent(

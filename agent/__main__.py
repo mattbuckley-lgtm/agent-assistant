@@ -22,7 +22,6 @@ from agent.composition import build_model, build_permissions, build_skills
 from agent.config import AgentSettings
 from agent.core.entrypoint import run_agent
 from agent.core.interfaces import Model, PermissionPolicy, SkillRegistry, ToolRegistry
-from agent.core.loop import DEFAULT_SYSTEM_PROMPT, compose_system_prompt, run_steps
 from agent.core.messages import Message, TextBlock
 from agent.core.state import Task
 from agent.mcp.registry import MCPToolRegistry
@@ -68,12 +67,13 @@ async def main(argv: list[str]) -> int:
                 permissions=permissions,
                 tracer=tracer,
                 max_steps=settings.max_steps,
+                system_prompt=settings.system_prompt,
             )
         else:
             assert args.prompt is not None
             task = Task(
                 id=args.task_id,
-                system_prompt=DEFAULT_SYSTEM_PROMPT,
+                system_prompt=settings.system_prompt,
                 messages=[Message(role="user", content=[TextBlock(text=args.prompt)])],
             )
             result = await run_agent(
@@ -113,14 +113,15 @@ async def run_chat(
     permissions: PermissionPolicy,
     tracer: Tracer,
     max_steps: int,
+    system_prompt: str,
 ) -> None:
     """Interactive REPL: each line is a user turn, streamed against a
     growing conversation. Model output prints token-by-token via
     `StreamingConsoleSink` so the terminal doesn't sit idle while the model
-    generates."""
+    generates. Each turn runs through `run_agent` with accumulated message
+    history so chat and single-shot share the same code path."""
     sink = FanOutSink([StreamingConsoleSink(), OtelSink(tracer)])
-    system = compose_system_prompt(DEFAULT_SYSTEM_PROMPT, skills)
-    messages: list[Message] = []
+    accumulated: list[Message] = []
 
     print(f"Chatting with '{model.name}'. Type 'exit' or Ctrl-D to quit.")
     while True:
@@ -136,24 +137,28 @@ async def run_chat(
         if line in {"exit", "quit"}:
             break
 
-        messages.append(Message(role="user", content=[TextBlock(text=line)]))
+        accumulated.append(Message(role="user", content=[TextBlock(text=line)]))
 
         print("agent> ", end="", flush=True)
-        _, stop_reason, _ = await run_steps(
-            str(uuid.uuid4()),
-            messages,
+        task = Task(
+            id=str(uuid.uuid4()),
+            system_prompt=system_prompt,
+            messages=list(accumulated),
+        )
+        result = await run_agent(
+            task,
             model=model,
             tools=tools,
             skills=skills,
             permissions=permissions,
             sink=sink,
-            system=system,
             approval=_stdin_approval,
             max_steps=max_steps,
         )
         print()
-        if stop_reason not in {"end_turn", "stop"}:
-            print(f"[stop_reason: {stop_reason}]")
+        if result.stop_reason not in {"end_turn", "stop"}:
+            print(f"[stop_reason: {result.stop_reason}]")
+        accumulated = list(result.messages)
 
 
 if __name__ == "__main__":

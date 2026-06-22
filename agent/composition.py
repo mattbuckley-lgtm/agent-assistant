@@ -10,7 +10,7 @@ import os
 
 from agent.config import AgentSettings, ModelConfig
 from agent.core.interfaces import Model, PermissionPolicy, SkillRegistry
-from agent.mcp.permissions import AllowlistPolicy
+from agent.mcp.permissions import AllowRule, AllowlistPolicy
 from agent.models.anthropic import AnthropicModel
 from agent.models.openai_compat import OpenAICompatModel
 from agent.models.prompted_tools import PromptedToolsModel
@@ -52,7 +52,11 @@ def _build_base_model(config: ModelConfig) -> Model:
 
 
 def build_permissions(settings: AgentSettings) -> PermissionPolicy:
-    return AllowlistPolicy(settings.permissions)
+    return build_permissions_from_rules(settings.permissions)
+
+
+def build_permissions_from_rules(rules: list[AllowRule] | None = None) -> PermissionPolicy:
+    return AllowlistPolicy(rules)
 
 
 def build_skills(settings: AgentSettings) -> SkillRegistry:

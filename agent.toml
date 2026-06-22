@@ -16,6 +16,7 @@ default_model = "replay"
 # NOTE: top-level keys like this one must come before any `[table]` header --
 # TOML attaches trailing key/value pairs to the most recently opened table.
 skills_dir = "skills"
+system_prompt = "You are a helpful agent."
 
 # Deterministic replay model + the echo-clock MCP server, with echo/clock
 # allowed. Used by tests and `make eval`.
