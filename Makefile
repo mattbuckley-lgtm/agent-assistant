@@ -38,7 +38,8 @@ help:
 	@echo "  check          lint + format-check + typecheck + coverage (CI gate)"
 	@echo "  run            run the agent CLI once (PROMPT=\"...\", MODEL=<registry key>)"
 	@echo "  chat           interactive streaming chat (MODEL=<registry key>)"
-	@echo "                 run/chat/eval/compose-eval auto-start/stop a matching"
+	@echo "  chat-agent     chat through a named agent with sub-agent tools (AGENT=orchestrator MODEL=...)"
+	@echo "                 run/chat/chat-agent/eval/compose-eval auto-start/stop a matching"
 	@echo "                 llama-server for local models (see local_models.toml.example)"
 	@echo "  llama-server   serve MODEL's llama-server standalone, in the foreground"
 	@echo "  llama-server-stop  stop the background llama-server process"
@@ -102,6 +103,14 @@ run:
 chat:
 	uv run python scripts/local_model.py $(MODEL) -- \
 		uv run python -m agent --chat $(MODEL_FLAG)
+
+# Interactive chat through a named agent (loads agents_dir, wires sub-agents as tools).
+# AGENT=orchestrator MODEL=anthropic (or any [models] key).
+AGENT ?= orchestrator
+.PHONY: chat-agent
+chat-agent:
+	uv run python scripts/local_model.py $(MODEL) -- \
+		uv run python -m agent --chat --agent $(AGENT) $(MODEL_FLAG)
 
 # Serve MODEL's llama-server in the foreground for standalone debugging
 # (requires a local_models.toml entry for MODEL -- see

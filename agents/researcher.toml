@@ -17,12 +17,3 @@ provider = "replay"
 name = "replay"
 cassette_path = "tests/cassettes/researcher.json"
 
-[[mcp_servers]]
-name = "web-search"
-transport = "stdio"
-command = "python"
-args = ["-m", "mcp_servers.web_search.server"]
-
-[[permissions]]
-server = "web-search"
-tool = "search"
