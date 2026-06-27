@@ -233,11 +233,20 @@ async def test_search_kind_semantic_from_path() -> None:
 
 
 @pytest.mark.asyncio
-async def test_search_provenance_is_tool_output() -> None:
+async def test_search_provenance_absent_defaults_to_tool_output() -> None:
     store, read_conn, _ = _make_store()
     read_conn.set_result(_FakeResult([_text_item(_raw_record())]))
     records = await store.search("Claude/Memory/Episodic", "q")
     assert records[0].provenance == Provenance.TOOL_OUTPUT
+
+
+@pytest.mark.asyncio
+async def test_search_provenance_preserved_from_frontmatter() -> None:
+    store, read_conn, _ = _make_store()
+    rec = {**_raw_record(), "provenance": "agent_reasoning"}
+    read_conn.set_result(_FakeResult([_text_item(rec)]))
+    records = await store.search("Claude/Memory/Episodic", "q")
+    assert records[0].provenance == Provenance.AGENT_REASONING
 
 
 @pytest.mark.asyncio

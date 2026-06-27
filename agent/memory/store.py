@@ -56,23 +56,34 @@ def _score_from_rank(rank: object, total: int) -> float:
     return max(0.0, 1.0 - (r - 1) / max(total, 1))
 
 
+def _provenance_from_str(value: str | None) -> Provenance:
+    """Parse a provenance string from vault frontmatter; default to TOOL_OUTPUT."""
+    if value == Provenance.AGENT_REASONING:
+        return Provenance.AGENT_REASONING
+    if value == Provenance.USER_STATED:
+        return Provenance.USER_STATED
+    return Provenance.TOOL_OUTPUT
+
+
 def _parse_rag_result(raw: dict[str, object], *, rank: int, total: int) -> MemoryRecord:
     """Parse one item from markdown-rag's /retrieve/dated response.
 
-    Each item is flat: {rank, source, snippet, entry_date, entry_date_ts, entities, title}.
-    There is no distance, no nested metadata, no provenance field — those are injected here.
+    Each item is flat: {rank, source, snippet, entry_date, entry_date_ts, entities,
+    title, provenance}. provenance is read from vault frontmatter; absent → TOOL_OUTPUT.
     """
     source = _str_from(raw, "source")
     content = _str_from(raw, "snippet")
     # Use source stem as id (e.g. "abc-uuid" from "Claude/Memory/Episodic/abc-uuid.md")
     stem = source.rsplit("/", 1)[-1]
     record_id = stem[:-3] if stem.endswith(".md") else stem or source
+    prov_raw = raw.get("provenance")
+    provenance = _provenance_from_str(str(prov_raw) if prov_raw is not None else None)
 
     return MemoryRecord(
         id=record_id,
         kind=_kind_from_source(source),
         content=content,
-        provenance=Provenance.TOOL_OUTPUT,
+        provenance=provenance,
         source=source,
         task_id=None,
         score=_score_from_rank(raw.get("rank", rank), total),

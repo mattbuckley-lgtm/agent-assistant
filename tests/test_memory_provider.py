@@ -20,6 +20,7 @@ from agent.memory.provider import EmptyMemoryProvider, FixedMemoryProvider, RagM
 from agent.memory.records import EpisodicRecord, SemanticFact
 from agent.memory.store import (
     _parse_rag_result,  # pyright: ignore[reportPrivateUsage]
+    _provenance_from_str,  # pyright: ignore[reportPrivateUsage]
     _str_from,  # pyright: ignore[reportPrivateUsage]
 )
 from agent.models.replay import ReplayModel
@@ -174,14 +175,18 @@ def _rag_item(
     source: str = "Claude/Memory/Episodic/abc-123.md",
     snippet: str = "A fact.",
     title: str = "Test",
+    provenance: str | None = None,
 ) -> dict[str, object]:
-    return {
+    item: dict[str, object] = {
         "rank": rank,
         "source": source,
         "snippet": snippet,
         "title": title,
         "entry_date": "2025-01-01",
     }
+    if provenance is not None:
+        item["provenance"] = provenance
+    return item
 
 
 def test_parse_rag_result_extracts_id_from_source() -> None:
@@ -204,9 +209,28 @@ def test_parse_rag_result_kind_semantic_from_path() -> None:
     assert r.kind == MemoryKind.SEMANTIC
 
 
-def test_parse_rag_result_provenance_is_tool_output() -> None:
+def test_parse_rag_result_provenance_absent_defaults_to_tool_output() -> None:
     r = _parse_rag_result(_rag_item(), rank=1, total=1)
     assert r.provenance == Provenance.TOOL_OUTPUT
+
+
+def test_parse_rag_result_provenance_agent_reasoning() -> None:
+    r = _parse_rag_result(_rag_item(provenance="agent_reasoning"), rank=1, total=1)
+    assert r.provenance == Provenance.AGENT_REASONING
+
+
+def test_parse_rag_result_provenance_user_stated() -> None:
+    r = _parse_rag_result(_rag_item(provenance="user_stated"), rank=1, total=1)
+    assert r.provenance == Provenance.USER_STATED
+
+
+def test_parse_rag_result_provenance_unknown_defaults_to_tool_output() -> None:
+    r = _parse_rag_result(_rag_item(provenance="something_else"), rank=1, total=1)
+    assert r.provenance == Provenance.TOOL_OUTPUT
+
+
+def test_provenance_from_str_none_is_tool_output() -> None:
+    assert _provenance_from_str(None) == Provenance.TOOL_OUTPUT
 
 
 def test_parse_rag_result_score_rank1_is_1() -> None:
