@@ -7,11 +7,15 @@ an HTTP server) do.
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from agent.config import AgentSettings, MCPServerConfig, ModelConfig
 from agent.core.interfaces import MemoryProvider, Model, PermissionPolicy, SkillRegistry
 from agent.mcp.permissions import AllowlistPolicy, AllowRule
+from agent.memory.distiller import HeuristicDistiller
 from agent.memory.provider import EmptyMemoryProvider, RagMemoryProvider
+from agent.memory.sink import MemorySink
 from agent.memory.store import McpMemoryStore
 from agent.models.anthropic import AnthropicModel
 from agent.models.openai_compat import OpenAICompatModel
@@ -83,17 +87,71 @@ def build_memory_provider(settings: AgentSettings) -> MemoryProvider:
 
 
 def build_memory_store(settings: AgentSettings) -> McpMemoryStore:
-    """Build a McpMemoryStore from settings. The caller must use it as an async
-    context manager and pass the connected store to RagMemoryProvider."""
+    """Build a McpMemoryStore from settings (read + optional write connections).
+
+    The caller must use it as an async context manager. It connects to the
+    markdown-rag read server and, when write_server is configured, to the
+    obsidian-mcp-guard write server.
+    """
     ms = settings.memory.server
-    server_config = MCPServerConfig(
+    read_config = MCPServerConfig(
         name=ms.name,
         transport=ms.transport,
         url=ms.url,
         command=ms.command,
         args=ms.args,
     )
-    return McpMemoryStore(server_config, search_tool=ms.search_tool)
+
+    write_config: MCPServerConfig | None = None
+    if settings.memory.write_server is not None:
+        ws = settings.memory.write_server
+        write_config = MCPServerConfig(
+            name=ws.name,
+            transport=ws.transport,
+            url=ws.url,
+            command=ws.command,
+            args=ws.args,
+        )
+
+    return McpMemoryStore(
+        read_config,
+        write_config=write_config,
+        search_tool=ms.search_tool,
+        write_tool=settings.memory.write_tool,
+    )
+
+
+def build_memory_sink(settings: AgentSettings, store: McpMemoryStore) -> MemorySink:
+    """Build a MemorySink from settings and a connected McpMemoryStore."""
+    return MemorySink(
+        store,
+        HeuristicDistiller(),
+        episodic_path_prefix=settings.memory.episodic_path_prefix,
+    )
+
+
+@asynccontextmanager
+async def memory_context(
+    settings: AgentSettings,
+) -> AsyncGenerator[tuple[MemoryProvider, McpMemoryStore | None]]:
+    """Yield (provider, store). Store is None when memory is disabled.
+
+    Keeps the MCP connections open for the caller's lifetime so that
+    per-run MemorySinks can be created cheaply via build_memory_sink()
+    without reconnecting on every turn or every one-shot run.
+    """
+    if not settings.memory.enabled:
+        yield EmptyMemoryProvider(), None
+        return
+    async with build_memory_store(settings) as store:
+        yield build_rag_provider(settings, store), store
+
+
+@asynccontextmanager
+async def memory_sink_context(settings: AgentSettings) -> AsyncGenerator[MemorySink | None]:
+    """Yield a MemorySink when memory is enabled, else yield None."""
+    async with memory_context(settings) as (_, store):
+        yield build_memory_sink(settings, store) if store is not None else None
 
 
 def build_rag_provider(settings: AgentSettings, store: McpMemoryStore) -> RagMemoryProvider:
@@ -101,8 +159,8 @@ def build_rag_provider(settings: AgentSettings, store: McpMemoryStore) -> RagMem
     mem = settings.memory
     return RagMemoryProvider(
         store,
-        episodic_collection=mem.episodic_collection,
-        semantic_collection=mem.semantic_collection,
+        episodic_folder=mem.episodic_folder,
+        semantic_folder=mem.semantic_folder,
         top_k=mem.top_k,
         token_budget=mem.token_budget,
     )

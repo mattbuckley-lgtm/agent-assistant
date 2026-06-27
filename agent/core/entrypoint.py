@@ -55,7 +55,7 @@ async def run_agent(
     system = compose_system_prompt(task.system_prompt or _FALLBACK_SYSTEM_PROMPT, skills, memories)
     messages = list(task.messages)
 
-    await fanout.emit(RunStarted(run_id=run_id, task_name=task.id))
+    await fanout.emit(RunStarted(run_id=run_id, task_name=task.id, task_id=task.task_id))
 
     user_text = ""
     for msg in reversed(task.messages):

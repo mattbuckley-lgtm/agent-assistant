@@ -24,12 +24,18 @@ from agent.mcp.client import MCPServerConnection
 class MemoryStore(Protocol):
     async def search(
         self,
-        collection: str,
-        query: str,
+        folder: str,
+        question: str,
         *,
-        where: dict[str, str] | None = None,
         top_k: int = 10,
     ) -> list[MemoryRecord]: ...
+
+
+@runtime_checkable
+class MemoryWriteStore(Protocol):
+    """Write one markdown note to the vault via obsidian-mcp-guard."""
+
+    async def write(self, path: str, content: str) -> None: ...
 
 
 def _str_from(mapping: dict[str, object], key: str, default: str = "") -> str:
@@ -37,61 +43,73 @@ def _str_from(mapping: dict[str, object], key: str, default: str = "") -> str:
     return str(val) if val is not None else default
 
 
-def _parse_record(raw: dict[str, object]) -> MemoryRecord:
-    raw_meta = raw.get("metadata")
-    metadata: dict[str, object] = (
-        cast(dict[str, object], raw_meta) if isinstance(raw_meta, dict) else {}
-    )
+def _kind_from_source(source: str) -> MemoryKind:
+    lower = source.lower()
+    if "/episodic/" in lower or lower.endswith("/episodic"):
+        return MemoryKind.EPISODIC
+    return MemoryKind.SEMANTIC
 
-    distance = raw.get("distance", 0.0)
-    score = max(0.0, 1.0 - float(distance)) if isinstance(distance, (int, float)) else 0.0
 
-    kind_str = _str_from(metadata, "kind", "semantic")
-    try:
-        kind = MemoryKind(kind_str)
-    except ValueError:
-        kind = MemoryKind.SEMANTIC
+def _score_from_rank(rank: object, total: int) -> float:
+    """Linear score: rank 1 of N → 1.0, rank N → 1/N (minimum 0.0)."""
+    r = int(rank) if isinstance(rank, (int, float)) else 1
+    return max(0.0, 1.0 - (r - 1) / max(total, 1))
 
-    prov_str = _str_from(metadata, "provenance", "tool_output")
-    try:
-        provenance = Provenance(prov_str)
-    except ValueError:
-        provenance = Provenance.TOOL_OUTPUT
 
-    content_val = raw.get("document") or raw.get("content") or ""
-    task_id_val = metadata.get("task_id")
+def _parse_rag_result(raw: dict[str, object], *, rank: int, total: int) -> MemoryRecord:
+    """Parse one item from markdown-rag's /retrieve/dated response.
+
+    Each item is flat: {rank, source, snippet, entry_date, entry_date_ts, entities, title}.
+    There is no distance, no nested metadata, no provenance field — those are injected here.
+    """
+    source = _str_from(raw, "source")
+    content = _str_from(raw, "snippet")
+    # Use source stem as id (e.g. "abc-uuid" from "Claude/Memory/Episodic/abc-uuid.md")
+    stem = source.rsplit("/", 1)[-1]
+    record_id = stem[:-3] if stem.endswith(".md") else stem or source
 
     return MemoryRecord(
-        id=_str_from(raw, "id"),
-        kind=kind,
-        content=str(content_val),
-        provenance=provenance,
-        source=_str_from(metadata, "source"),
-        task_id=str(task_id_val) if task_id_val is not None else None,
-        score=score,
+        id=record_id,
+        kind=_kind_from_source(source),
+        content=content,
+        provenance=Provenance.TOOL_OUTPUT,
+        source=source,
+        task_id=None,
+        score=_score_from_rank(raw.get("rank", rank), total),
     )
 
 
 class McpMemoryStore:
-    """Calls the markdown-rag MCP server search tool.
+    """Read/write memory via MCP servers.
+
+    Read path:  markdown-rag  (`search` tool, queried by `search()`).
+    Write path: obsidian-mcp-guard (`create_note` tool, called by `write()`).
+    The write connection is optional; `write()` is a no-op when not configured.
 
     Usage::
 
-        async with McpMemoryStore(config) as store:
-            records = await store.search("semantic", "query string", top_k=5)
+        async with McpMemoryStore(read_config, write_config=write_cfg) as store:
+            records = await store.search("episodic", "query", top_k=5)
+            await store.write("Claude/Memory/Episodic/abc.md", content)
     """
 
     def __init__(
         self,
         config: MCPServerConfig,
         *,
+        write_config: MCPServerConfig | None = None,
         search_tool: str = "search",
+        write_tool: str = "create_note",
     ) -> None:
         self._connection = MCPServerConnection(config)
+        self._write_connection = MCPServerConnection(write_config) if write_config else None
         self._search_tool = search_tool
+        self._write_tool = write_tool
 
     async def __aenter__(self) -> McpMemoryStore:
         await self._connection.connect()
+        if self._write_connection is not None:
+            await self._write_connection.connect()
         return self
 
     async def __aexit__(
@@ -100,29 +118,25 @@ class McpMemoryStore:
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
+        if self._write_connection is not None:
+            await self._write_connection.close()
         await self._connection.close()
 
     async def search(
         self,
-        collection: str,
-        query: str,
+        folder: str,
+        question: str,
         *,
-        where: dict[str, str] | None = None,
         top_k: int = 10,
     ) -> list[MemoryRecord]:
-        args: dict[str, object] = {
-            "collection": collection,
-            "query": query,
-            "n_results": top_k,
-        }
-        if where:
-            args["where"] = where
-
-        result = await self._connection.call_tool(self._search_tool, args)
+        result = await self._connection.call_tool(
+            self._search_tool,
+            {"question": question, "top_k": top_k, "folder": folder},
+        )
         if result.isError:
             return []
 
-        records: list[MemoryRecord] = []
+        raw_items: list[dict[str, object]] = []
         for item in result.content:
             item_dict = item.model_dump(mode="json")
             if item_dict.get("type") != "text":
@@ -138,14 +152,26 @@ class McpMemoryStore:
                 items: list[object] = cast(list[object], data)
                 for elem in items:
                     if isinstance(elem, dict):
-                        try:
-                            records.append(_parse_record(cast(dict[str, object], elem)))
-                        except Exception:  # noqa: BLE001
-                            pass
+                        raw_items.append(cast(dict[str, object], elem))
             elif isinstance(data, dict):
-                try:
-                    records.append(_parse_record(cast(dict[str, object], data)))
-                except Exception:  # noqa: BLE001
-                    pass
+                raw_items.append(cast(dict[str, object], data))
 
+        total = len(raw_items)
+        records: list[MemoryRecord] = []
+        for i, raw in enumerate(raw_items):
+            try:
+                records.append(_parse_rag_result(raw, rank=i + 1, total=total))
+            except Exception:  # noqa: BLE001
+                pass
         return records
+
+    async def write(self, path: str, content: str) -> None:
+        """Write a markdown note to the vault. No-op when write_config is absent."""
+        if self._write_connection is None:
+            return
+        result = await self._write_connection.call_tool(
+            self._write_tool,
+            {"source": path, "content": content},
+        )
+        if result.isError:
+            raise RuntimeError(f"memory write failed for '{path}': {result.content}")

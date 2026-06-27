@@ -41,35 +41,34 @@ class EmptyMemoryProvider:
 
 
 class RagMemoryProvider:
-    """Queries episodic + semantic collections and returns top-k within budget."""
+    """Queries episodic + semantic folders and returns top-k within budget."""
 
     def __init__(
         self,
         store: MemoryStore,
         *,
-        episodic_collection: str = "episodic",
-        semantic_collection: str = "semantic",
+        episodic_folder: str = "Claude/Memory/Episodic",
+        semantic_folder: str = "Claude/Memory/Semantic",
         top_k: int = 10,
         token_budget: int = 2000,
     ) -> None:
         self._store = store
-        self._episodic_collection = episodic_collection
-        self._semantic_collection = semantic_collection
+        self._episodic_folder = episodic_folder
+        self._semantic_folder = semantic_folder
         self._top_k = top_k
         self._token_budget = token_budget
 
     async def recall(self, task: Task, *, scope: str) -> list[MemoryRecord]:
-        query = _task_to_query(task)
+        question = _task_to_query(task)
         try:
             episodic = await self._store.search(
-                self._episodic_collection,
-                query,
-                where={"task_id": scope},
+                self._episodic_folder,
+                question,
                 top_k=self._top_k,
             )
             semantic = await self._store.search(
-                self._semantic_collection,
-                query,
+                self._semantic_folder,
+                question,
                 top_k=self._top_k,
             )
         except Exception:  # noqa: BLE001 — backend failure: degrade to no memories

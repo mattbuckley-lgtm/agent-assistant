@@ -86,25 +86,29 @@ class OtelConfig(BaseModel):
 
 
 class MemoryServerConfig(BaseModel):
-    """Config for the markdown-rag MCP server that backs memory recall."""
+    """Config for one memory MCP server (markdown-rag for reads, obsidian-mcp-guard for writes)."""
 
     name: str = "markdown-rag"
     transport: Literal["stdio", "streamable_http"] = "streamable_http"
     url: str | None = None
     command: str | None = None
     args: list[str] = Field(default_factory=list[str])
-    search_tool: str = "search"
+    search_tool: str = "search_memory"
 
 
 class MemorySettings(BaseModel):
-    """Memory recall configuration. Disabled by default (no-op EmptyMemoryProvider)."""
+    """Memory recall + formation configuration. Disabled by default."""
 
     enabled: bool = False
-    episodic_collection: str = "episodic"
-    semantic_collection: str = "semantic"
+    episodic_folder: str = "Claude/Memory/Episodic"
+    semantic_folder: str = "Claude/Memory/Semantic"
     top_k: int = 10
     token_budget: int = 2000
     server: MemoryServerConfig = Field(default_factory=MemoryServerConfig)
+    # Write path (Phase 3+): obsidian-mcp-guard. None = writes disabled.
+    write_server: MemoryServerConfig | None = None
+    write_tool: str = "create_note"
+    episodic_path_prefix: str = "Claude/Memory/Episodic"
 
 
 class AgentSettings(BaseSettings):

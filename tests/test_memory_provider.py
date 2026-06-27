@@ -19,7 +19,7 @@ from agent.mcp.permissions import AllowlistPolicy
 from agent.memory.provider import EmptyMemoryProvider, FixedMemoryProvider, RagMemoryProvider
 from agent.memory.records import EpisodicRecord, SemanticFact
 from agent.memory.store import (
-    _parse_record,  # pyright: ignore[reportPrivateUsage]
+    _parse_rag_result,  # pyright: ignore[reportPrivateUsage]
     _str_from,  # pyright: ignore[reportPrivateUsage]
 )
 from agent.models.replay import ReplayModel
@@ -64,7 +64,7 @@ def _record(
 
 
 class FakeMemoryStore:
-    """Returns records filtered by collection name and optional task_id where clause."""
+    """Returns records filtered by folder path prefix."""
 
     def __init__(self, records: list[MemoryRecord]) -> None:
         self._records = records
@@ -72,26 +72,24 @@ class FakeMemoryStore:
 
     async def search(
         self,
-        collection: str,
-        query: str,
+        folder: str,
+        question: str,
         *,
-        where: dict[str, str] | None = None,
         top_k: int = 10,
     ) -> list[MemoryRecord]:
-        self.calls.append({"collection": collection, "query": query, "where": where})
-        results = [r for r in self._records if r.kind.value == collection]
-        if where and "task_id" in where:
-            results = [r for r in results if r.task_id == where["task_id"]]
+        self.calls.append({"folder": folder, "question": question})
+        is_episodic = "episodic" in folder.lower()
+        kind = MemoryKind.EPISODIC if is_episodic else MemoryKind.SEMANTIC
+        results = [r for r in self._records if r.kind == kind]
         return sorted(results, key=lambda r: r.score, reverse=True)[:top_k]
 
 
 class BrokenStore:
     async def search(
         self,
-        collection: str,
-        query: str,
+        folder: str,
+        question: str,
         *,
-        where: dict[str, str] | None = None,
         top_k: int = 10,
     ) -> list[MemoryRecord]:
         raise RuntimeError("backend failure")
@@ -108,35 +106,21 @@ async def test_fixed_provider_returns_given_records() -> None:
     assert result == records
 
 
-async def test_rag_provider_queries_both_collections() -> None:
+async def test_rag_provider_queries_both_folders() -> None:
     store = FakeMemoryStore(
-        [_record("s1", MemoryKind.SEMANTIC), _record("e1", MemoryKind.EPISODIC, task_id="t1")]
+        [_record("s1", MemoryKind.SEMANTIC), _record("e1", MemoryKind.EPISODIC)]
     )
     await RagMemoryProvider(store).recall(_task(), scope="t1")
-    collections = [str(c["collection"]) for c in store.calls]
-    assert "episodic" in collections
-    assert "semantic" in collections
-
-
-async def test_rag_provider_filters_episodic_by_scope() -> None:
-    store = FakeMemoryStore([])
-    await RagMemoryProvider(store).recall(_task(), scope="my-task-id")
-    episodic_call = next(c for c in store.calls if c["collection"] == "episodic")
-    assert episodic_call["where"] == {"task_id": "my-task-id"}
-
-
-async def test_rag_provider_semantic_has_no_where_filter() -> None:
-    store = FakeMemoryStore([])
-    await RagMemoryProvider(store).recall(_task(), scope="my-task-id")
-    semantic_call = next(c for c in store.calls if c["collection"] == "semantic")
-    assert semantic_call["where"] is None
+    folders = [str(c["folder"]) for c in store.calls]
+    assert any("Episodic" in f for f in folders)
+    assert any("Semantic" in f for f in folders)
 
 
 async def test_rag_provider_merges_and_sorts_by_score() -> None:
     records = [
-        _record("e1", MemoryKind.EPISODIC, score=0.8, task_id="t1"),
+        _record("e1", MemoryKind.EPISODIC, score=0.8),
         _record("s1", MemoryKind.SEMANTIC, score=0.95),
-        _record("e2", MemoryKind.EPISODIC, score=0.5, task_id="t1"),
+        _record("e2", MemoryKind.EPISODIC, score=0.5),
     ]
     store = FakeMemoryStore(records)
     result = await RagMemoryProvider(store).recall(_task(), scope="t1")
@@ -161,14 +145,14 @@ async def test_rag_provider_trims_to_token_budget() -> None:
     assert len(result) == 2  # 2 × 100 = 200 ≤ 250; 3 × 100 = 300 > 250
 
 
-async def test_rag_provider_uses_task_message_as_query() -> None:
+async def test_rag_provider_uses_task_message_as_question() -> None:
     store = FakeMemoryStore([])
     await RagMemoryProvider(store).recall(_task("What is the capital of France?"), scope="x")
-    assert any("What is the capital" in str(c["query"]) for c in store.calls)
+    assert any("What is the capital" in str(c["question"]) for c in store.calls)
 
 
 # ---------------------------------------------------------------------------
-# _str_from and _parse_record (agent/memory/store.py)
+# _str_from and _parse_rag_result (agent/memory/store.py)
 # ---------------------------------------------------------------------------
 
 
@@ -184,49 +168,56 @@ def test_str_from_returns_empty_default_when_omitted() -> None:
     assert _str_from({}, "x") == ""
 
 
-def test_parse_record_standard_response() -> None:
-    raw: dict[str, object] = {
-        "id": "doc-1",
-        "document": "A semantic fact.",
-        "distance": 0.15,
-        "metadata": {
-            "kind": "semantic",
-            "provenance": "agent_reasoning",
-            "source": "codebase",
-        },
+def _rag_item(
+    *,
+    rank: int = 1,
+    source: str = "Claude/Memory/Episodic/abc-123.md",
+    snippet: str = "A fact.",
+    title: str = "Test",
+) -> dict[str, object]:
+    return {
+        "rank": rank,
+        "source": source,
+        "snippet": snippet,
+        "title": title,
+        "entry_date": "2025-01-01",
     }
-    r = _parse_record(raw)
-    assert r.id == "doc-1"
+
+
+def test_parse_rag_result_extracts_id_from_source() -> None:
+    r = _parse_rag_result(_rag_item(source="Claude/Memory/Episodic/my-uuid.md"), rank=1, total=1)
+    assert r.id == "my-uuid"
+
+
+def test_parse_rag_result_content_is_snippet() -> None:
+    r = _parse_rag_result(_rag_item(snippet="The content here."), rank=1, total=1)
+    assert r.content == "The content here."
+
+
+def test_parse_rag_result_kind_episodic_from_path() -> None:
+    r = _parse_rag_result(_rag_item(source="Claude/Memory/Episodic/x.md"), rank=1, total=1)
+    assert r.kind == MemoryKind.EPISODIC
+
+
+def test_parse_rag_result_kind_semantic_from_path() -> None:
+    r = _parse_rag_result(_rag_item(source="Claude/Memory/Semantic/x.md"), rank=1, total=1)
     assert r.kind == MemoryKind.SEMANTIC
-    assert r.content == "A semantic fact."
-    assert r.provenance == Provenance.AGENT_REASONING
-    assert abs(r.score - 0.85) < 0.001
 
 
-def test_parse_record_invalid_kind_defaults_to_semantic() -> None:
-    raw: dict[str, object] = {"id": "x", "content": "C", "metadata": {"kind": "unknown"}}
-    assert _parse_record(raw).kind == MemoryKind.SEMANTIC
+def test_parse_rag_result_provenance_is_tool_output() -> None:
+    r = _parse_rag_result(_rag_item(), rank=1, total=1)
+    assert r.provenance == Provenance.TOOL_OUTPUT
 
 
-def test_parse_record_invalid_provenance_defaults_to_tool_output() -> None:
-    raw: dict[str, object] = {"id": "x", "content": "C", "metadata": {"provenance": "bad"}}
-    assert _parse_record(raw).provenance == Provenance.TOOL_OUTPUT
+def test_parse_rag_result_score_rank1_is_1() -> None:
+    r = _parse_rag_result(_rag_item(rank=1), rank=1, total=3)
+    assert r.score == 1.0
 
 
-def test_parse_record_task_id_from_metadata() -> None:
-    raw: dict[str, object] = {
-        "id": "y",
-        "content": "C",
-        "metadata": {"task_id": "sess-123"},
-    }
-    assert _parse_record(raw).task_id == "sess-123"
-
-
-def test_parse_record_no_metadata() -> None:
-    raw: dict[str, object] = {"id": "z", "document": "D"}
-    r = _parse_record(raw)
-    assert r.content == "D"
-    assert r.kind == MemoryKind.SEMANTIC
+def test_parse_rag_result_score_decreases_with_rank() -> None:
+    r1 = _parse_rag_result(_rag_item(rank=1), rank=1, total=3)
+    r2 = _parse_rag_result(_rag_item(rank=2), rank=2, total=3)
+    assert r1.score > r2.score
 
 
 # ---------------------------------------------------------------------------

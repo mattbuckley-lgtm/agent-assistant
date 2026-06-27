@@ -54,6 +54,7 @@ class EventBase(BaseModel):
 class RunStarted(EventBase):
     type: Literal["run_started"] = "run_started"
     task_name: str
+    task_id: str | None = None
 
 
 class RunFinished(EventBase):
