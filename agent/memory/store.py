@@ -175,3 +175,14 @@ class McpMemoryStore:
         )
         if result.isError:
             raise RuntimeError(f"memory write failed for '{path}': {result.content}")
+        # obsidian-mcp-guard returns application errors as {"error": ...} in the
+        # response body rather than as MCP transport errors, so check content too.
+        for item in result.content:
+            item_dict = item.model_dump(mode="json")
+            if item_dict.get("type") == "text":
+                try:
+                    data = json.loads(str(item_dict.get("text", "")))
+                    if isinstance(data, dict) and "error" in data:
+                        raise RuntimeError(f"memory write failed for '{path}': {data}")
+                except json.JSONDecodeError:
+                    pass

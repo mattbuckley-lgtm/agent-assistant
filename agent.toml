@@ -109,3 +109,20 @@ tool = "count_words"
 [otel]
 enabled = false
 service_name = "agent-runtime"
+
+[memory]
+enabled = true
+episodic_folder = "Claude/Memory/Episodic"
+semantic_folder = "Claude/Memory/Semantic"
+
+[memory.server]
+name = "markdown-rag"
+transport = "stdio"
+command = "../markdown-rag/scripts/.venv/bin/python3.12"
+args = ["../markdown-rag/scripts/mcp_stdio.py"]
+
+[memory.write_server]
+name = "obsidian-mcp-guard"
+transport = "stdio"
+command = "uvx"
+args = ["obsidian-mcp-guard"]

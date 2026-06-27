@@ -14,6 +14,7 @@ configure the *same* `ToolRegistry`/`ToolSpec`/`call_tool` surface, so
 
 from __future__ import annotations
 
+import os
 from contextlib import AsyncExitStack
 
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
@@ -58,7 +59,14 @@ class MCPServerConnection:
         if self._config.command is None:
             raise ValueError(f"MCP server '{self.name}': stdio transport requires 'command'")
 
-        params = StdioServerParameters(command=self._config.command, args=self._config.args)
+        # Pass the full environment so vars set via .env (e.g. HOST_VAULT_PATH,
+        # API keys) reach the subprocess. MCP's default only inherits a narrow
+        # allowlist (HOME, PATH, SHELL, …) which drops custom vars silently.
+        params = StdioServerParameters(
+            command=self._config.command,
+            args=self._config.args,
+            env=dict(os.environ),
+        )
         return await self._exit_stack.enter_async_context(stdio_client(params))
 
     async def _connect_streamable_http(self) -> tuple[_ReadStream, _WriteStream]:

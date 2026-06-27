@@ -314,10 +314,31 @@ async def test_write_noop_when_no_write_connection() -> None:
 
 
 @pytest.mark.asyncio
-async def test_write_raises_on_error() -> None:
+async def test_write_raises_on_mcp_error() -> None:
     store, _, write_conn = _make_store(with_write=True)
     assert write_conn is not None
     write_conn.set_result(_FakeResult(is_error=True))
 
     with pytest.raises(RuntimeError, match="memory write failed"):
         await store.write("bad/path.md", "content")
+
+
+@pytest.mark.asyncio
+async def test_write_raises_on_application_error_in_response() -> None:
+    """obsidian-mcp-guard returns {"error": "..."} as body content, not as isError=True."""
+    store, _, write_conn = _make_store(with_write=True)
+    assert write_conn is not None
+    write_conn.set_result(_FakeResult([_text_item({"error": "host_vault_path_not_configured"})]))
+
+    with pytest.raises(RuntimeError, match="memory write failed"):
+        await store.write("Claude/Memory/Episodic/abc.md", "content")
+
+
+@pytest.mark.asyncio
+async def test_write_succeeds_when_response_is_plain_text() -> None:
+    """Non-JSON text content in response should not cause an error."""
+    store, _, write_conn = _make_store(with_write=True)
+    assert write_conn is not None
+    write_conn.set_result(_FakeResult([_FakeContent(type_="text", text="OK")]))
+
+    await store.write("Claude/Memory/Episodic/abc.md", "content")

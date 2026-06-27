@@ -121,7 +121,8 @@ async def main(argv: list[str]) -> int:
                 rt.tools = tools
                 otel = OtelSink(tracer)
                 if args.chat:
-                    await run_chat(rt, _make_sink(StreamingConsoleSink(), otel), mem_store)
+                    base = _make_sink(StreamingConsoleSink(), otel)
+                    await run_chat(rt, base, mem_store, settings)
                 else:
                     assert args.prompt is not None
                     await _run_oneshot(args, rt, otel, mem_store, settings)
@@ -183,7 +184,7 @@ async def _run_named_agent(
             )
 
             if args.chat:
-                await run_chat(rt, streaming_sink, mem_store)
+                await run_chat(rt, streaming_sink, mem_store, settings)
             else:
                 assert args.prompt is not None
                 await _run_oneshot(args, rt, streaming_sink, mem_store, settings)
@@ -228,7 +229,7 @@ async def run_chat(
     rt: _Runtime,
     base_sink: TranscriptSink,
     mem_store: McpMemoryStore | None,
-    settings: AgentSettings | None = None,
+    settings: AgentSettings,
 ) -> None:
     """Interactive REPL: each line is a user turn, streamed against a
     growing conversation. A new MemorySink is created per turn so each
@@ -257,11 +258,7 @@ async def run_chat(
             system_prompt=rt.system_prompt,
             messages=list(accumulated),
         )
-        mem_sink = (
-            build_memory_sink(settings, mem_store)
-            if settings is not None and mem_store is not None
-            else None
-        )
+        mem_sink = build_memory_sink(settings, mem_store) if mem_store is not None else None
         result = await run_agent(
             task,
             model=rt.model,
