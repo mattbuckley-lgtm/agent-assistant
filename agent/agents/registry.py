@@ -91,11 +91,13 @@ class AgentRegistry:
         mock_registry_by_agent: dict[str, ToolRegistry] | None = None,
         mock_model_by_agent: _ModelOverrides | None = None,
         default_to_empty_mocks: bool = False,
+        default_model_key: str | None = None,
     ) -> None:
         self._base_settings = base_settings
         self._mock_by_agent: dict[str, ToolRegistry] = mock_registry_by_agent or {}
         self._mock_model_by_agent: _ModelOverrides = mock_model_by_agent or {}
         self._default_to_empty_mocks = default_to_empty_mocks
+        self._default_model_key = default_model_key
         self._agents: dict[str, tuple[AgentCard, AgentSettings]] = {}
         self._cache: dict[str, AgentRuntime] = {}
         self._exit_stack = AsyncExitStack()
@@ -146,7 +148,7 @@ class AgentRegistry:
             model = (
                 self._mock_model_by_agent[name]
                 if name in self._mock_model_by_agent
-                else build_model(settings.resolve_model(None))
+                else build_model(settings.resolve_model(self._default_model_key))
             )
             permissions = build_permissions(settings)
             skills = build_skills(settings)

@@ -224,6 +224,7 @@ def run_subagent_eval_case(agent_name: str = "orchestrator", model: str = "repla
             mock_registry_by_agent=mock_by_agent,
             mock_model_by_agent=mock_model_by_agent,
             default_to_empty_mocks=True,
+            default_model_key="replay" if model == "replay" else None,
         ) as registry:
             runtime = await registry.get_runtime(agent_name)
 
@@ -302,11 +303,14 @@ def run_consolidation_eval_case(model: str = "replay") -> Solver:
     holds the gate's decisions as JSON-serialised MemoryOp dicts so that
     `memory_promoted`, `memory_not_promoted`, and `provenance_blocked` scorers
     can grade the result without coupling to the write path.
+
+    The consolidator model is always driven by each case's cassette, regardless
+    of any live `model` override passed by the eval runner. These cases test the
+    deterministic gate/parser, not model quality -- a live model would produce
+    unpredictable output that doesn't match the gate expectations defined by the
+    cassettes.
     """
     settings = AgentSettings()  # type: ignore[call-arg]
-    real_model: Model | None = (
-        None if model == "replay" else build_model(settings.resolve_model(model))
-    )
 
     async def solve(state: TaskState, generate: Generate) -> TaskState:
         case = state.metadata_as(EvalCase)
@@ -321,9 +325,7 @@ def run_consolidation_eval_case(model: str = "replay") -> Solver:
             except ValueError:
                 episode_provenances[ep_id] = Provenance.TOOL_OUTPUT
 
-        active_model: Model = real_model or ReplayModel(
-            CASSETTES_DIR / case.cassette, name="replay"
-        )
+        active_model: Model = ReplayModel(CASSETTES_DIR / case.cassette, name="replay")
         agent_task = Task(
             id=str(state.sample_id),
             system_prompt=CONSOLIDATOR_SYSTEM_PROMPT,
@@ -348,7 +350,7 @@ def run_consolidation_eval_case(model: str = "replay") -> Solver:
         gated = apply_promotion_gate(ops, episode_provenances)
 
         final_text = result.final_text()
-        state.output = ModelOutput.from_content(model=active_model.name, content=final_text)
+        state.output = ModelOutput.from_content(model="replay", content=final_text)
         state.messages.append(ChatMessageAssistant(content=final_text))
         state.store.set("gated_ops", [op.model_dump(mode="json") for op in gated])
         state.store.set("transcript", [e.model_dump(mode="json") for e in result.transcript])
