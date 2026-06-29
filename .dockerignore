@@ -6,3 +6,5 @@ __pycache__
 **/__pycache__
 logs
 *.egg-info
+.env
+local_models.toml
